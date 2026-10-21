@@ -19,7 +19,7 @@ st.set_page_config(
 st.title("DATA CONTROL DYEING (DCD)")
 st.markdown("Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.")
 
-# Inisialisasi Session State agar data tetap stay (tidak reset saat download)
+# 1. Inisialisasi Session State agar data tetap tersimpan (STAY) meskipun tombol unduh diklik
 if 'df_hasil_crosscheck' not in st.session_state:
     st.session_state['df_hasil_crosscheck'] = None
 if 'df_pibc_bersih' not in st.session_state:
@@ -59,7 +59,7 @@ if menu == "Cross Check Data":
                 df_final_mb = pd.concat(df_gabung_list, ignore_index=True)
                 df_hasil = jalankan_proses_crosscheck(df_final_mb, df_pibc_bersih, df_pg_bersih)
                 
-                # Simpan ke Session State
+                # SIMPAN HASIL KE SESSION STATE
                 st.session_state['df_hasil_crosscheck'] = df_hasil
                 st.session_state['df_pibc_bersih'] = df_pibc_bersih
                 st.session_state['df_pg_bersih'] = df_pg_bersih
@@ -68,12 +68,13 @@ if menu == "Cross Check Data":
         else:
             st.warning("Mohon upload setidaknya file Master MB dan Master PIBC terlebih dahulu.")
 
-    # Tampilkan Hasil jika Data Ada di Session State
+    # 2. TAMPILAN STAY: Mengambil data dari Session State
     if st.session_state['df_hasil_crosscheck'] is not None:
         df_hasil = st.session_state['df_hasil_crosscheck']
         df_pibc_b = st.session_state['df_pibc_bersih']
         df_pg_b = st.session_state['df_pg_bersih']
 
+        st.markdown("---")
         st.subheader("Tabel Hasil Cross Check Data")
         st.dataframe(df_hasil, use_container_width=True)
         
@@ -81,6 +82,7 @@ if menu == "Cross Check Data":
         col_dl1, col_dl2 = st.columns(2)
         col_dl3, col_dl4 = st.columns(2)
         
+        # Generator File Unduhan 1: Keseluruhan Hasil
         output_all = io.BytesIO()
         with pd.ExcelWriter(output_all, engine='openpyxl') as writer:
             df_hasil.to_excel(writer, index=False, sheet_name='Hasil Crosscheck')
@@ -91,32 +93,39 @@ if menu == "Cross Check Data":
                 label="📥 Unduh Hasil Cross Check Keseluruhan",
                 data=data_all,
                 file_name="Hasil_Crosscheck_DCD_Lengkap.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_all"
             )
         
+        # Generator File Unduhan 2: Rekap Incorrect 3 Sheet
         data_incorrect = buat_excel_incorrect_multi_sheet(df_hasil)
         with col_dl2:
             st.download_button(
                 label="📥 Unduh Rekap Data INCORRECT (3 Sheet)",
                 data=data_incorrect,
                 file_name="Rekap_Incorrect_DCD.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_incorrect"
             )
 
+        # Generator File Unduhan 3: PIBC Tidak Ada di MB
         data_pibc_tdk_ada = buat_excel_pibc_tidak_di_mb(df_hasil, df_pibc_b)
         with col_dl3:
             st.download_button(
                 label="📥 Unduh Hasil PIBC yang Tidak Ada di MB",
                 data=data_pibc_tdk_ada,
                 file_name="PIBC_Tidak_Ada_di_MB.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_pibc_missing"
             )
 
+        # Generator File Unduhan 4: PG Tidak Ada di MB
         data_pg_tdk_ada = buat_excel_pg_tidak_di_mb(df_hasil, df_pg_b)
         with col_dl4:
             st.download_button(
                 label="📥 Unduh Hasil PG yang Tidak Ada di MB",
                 data=data_pg_tdk_ada,
                 file_name="PG_Tidak_Ada_di_MB.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_pg_missing"
             )
