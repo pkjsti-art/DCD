@@ -16,7 +16,6 @@ def siapkan_kolom_standar(df_mb):
     Menyisipkan Qty Target Standar (GR) tepat di sebelah kanan Target Unit,
     dan Qty BB Standar (GR) tepat di sebelah kanan Qty/Unit secara presisi.
     """
-    # Deteksi nama kolom aktual di Master MB
     col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
     col_target_unit = cari_kolom_akurat(df_mb, ['target unit', 'target_unit'])
     
@@ -106,7 +105,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 except:
                     val_act = 0.0
                 pibc_lookup[(k_dyelot, k_item)] = val_act
-                # Tambahan fleksibel key tanpa prefiks PIBC jika ada
                 pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_item)] = val_act
 
     # Buat lookup terstruktur untuk Master PG
@@ -125,12 +123,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     val_msk = 0.0
                 pg_lookup[(k_ket, k_var)] = val_msk
 
-    # Kelompokkan berdasarkan 'Kode' MB agar konsisten per transaksi
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
     for k_val, df_sub in grup_kode:
-        # Cek apakah dalam 1 grup kode ini ada ditemukan kode PIBC di baris manapun
-        grup_ punya_pibc = False
+        grup_punya_pibc = False
         kode_pibc_grup = None
         
         for idx in df_sub.index:
@@ -153,11 +149,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
             
-            # Set status PIBC seragam dalam satu grup kode
             df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
-            # Jika baris total/overhead -> KOSONGKAN
             if kode_item in baris_diabaikan:
                 df_mb.at[idx, 'Crosscheck Qty'] = ''
                 df_mb.at[idx, 'Qty PIBC'] = ''
@@ -173,7 +167,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
             
-            # 1. Logika Benang
             if 'PRODUKSI SOFTCONE' in gudang or kode_item.startswith(('TWP', 'MWP', 'TBM', 'MBB')):
                 qty_target = row.get('Qty Target Standar (GR)', 0.0)
                 qty_bb = row.get('Qty BB Standar (GR)', 0.0)
@@ -192,13 +185,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if kode_item != 'TBB':
                     df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
 
-            # 2. Logika Chemical & Dyestuff
             elif 'DYEING' in gudang or 'LAB' in gudang:
                 qty_bb = row.get('Qty BB Standar (GR)', 0.0)
                 matched = False
                 
                 if kode_pibc_grup:
-                    # Cek pencocokan ke PIBC
                     key_pibc = (kode_pibc_grup.upper(), kode_item.upper())
                     key_pibc_alt = (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper())
                     
@@ -215,7 +206,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         df_mb.at[idx, 'Selisih (GR)'] = selisih
                         matched = True
                     else:
-                        # Cek fallback ke PG
                         key_pg = (kode_pibc_grup.upper(), kode_item.upper())
                         if key_pg in pg_lookup:
                             qty_masuk = pg_lookup[key_pg]
@@ -235,7 +225,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                     status_cek_list.append(f"Kelebihan [{kode_item}]")
 
-            # 3. Logika Cek Variant (HANYA BARIS PERTAMA)
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
                 if 'MESIN DYEING' in gudang:
@@ -251,7 +240,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_first_row = False
 
-        # Status Cek hanya untuk baris pertama kelompok Kode MB
         idx_first = df_sub.index[0]
         if status_cek_list:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list)))
@@ -270,8 +258,8 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
         df_full_inc.to_excel(writer, index=False, sheet_name='INCORRECT')
 
         df_selisih = df_hasil[df_hasil['Crosscheck Qty'] == 'MEMANG SELISIH']
-        kode_grup_selisih = df_selisih['Crosscheck Qty'] == 'MEMANG SELISIH'
-        df_full_selisih = df_hasil[df_selisih] if 'Crosscheck Qty' in df_hasil.columns else df_selisih
+        kode_grup_selisih = df_selisih['Kode'].unique() if 'Kode' in df_selisih.columns else []
+        df_full_selisih = df_hasil[df_hasil['Kode'].isin(kode_grup_selisih)] if len(kode_grup_selisih) > 0 else df_selisih
         df_full_selisih.to_excel(writer, index=False, sheet_name='INCORRECT Memang Selisih')
 
         df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'] == 'INCORRECT')]
