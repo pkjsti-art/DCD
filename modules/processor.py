@@ -12,7 +12,10 @@ def cari_kolom_akurat(df, daftar_kemungkinan):
 
 def bersihkan_angka_indo(val):
     """
-    Mengonversi string angka format Indonesia/Excel (contoh: '1.400,00' -> 1400.0, '700,00' -> 700.0)
+    Parser angka format Indonesia yang akurat:
+    - Contoh '39.870,00' -> hapus titik ribuan & ubah koma desimal jadi titik -> 39870.0
+    - Contoh '700,00' -> 700.0
+    - Jika sudah berupa float/int, langsung kembalikan.
     """
     if pd.isna(val) or val is None:
         return 0.0
@@ -23,15 +26,9 @@ def bersihkan_angka_indo(val):
     if not val_str or val_str.lower() == 'nan':
         return 0.0
         
-    # Jika mengandung koma sebagai desimal (contoh: 1.400,00 atau 700,00)
-    if ',' in val_str:
-        val_str = val_str.replace('.', '')  # Hapus titik ribuan
-        val_str = val_str.replace(',', '.')  # Ubah koma desimal jadi titik
-    else:
-        # Jika hanya ada titik dan lebih dari 1 titik (contoh 1.000.000)
-        if val_str.count('.') > 1:
-            val_str = val_str.replace('.', '')
-            
+    # Hapus titik (pemisah ribuan) dan ubah koma (pemisah desimal) menjadi titik
+    val_str = val_str.replace('.', '').replace(',', '.')
+    
     try:
         return float(val_str)
     except:
