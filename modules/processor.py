@@ -23,9 +23,13 @@ def perbaiki_header_file(df):
     return df
 
 def cari_kolom_akurat(df, daftar_kemungkinan):
-    for col in df.columns:
-        col_clean = str(col).strip().lower()
-        for kem in daftar_kemungkinan:
+    """
+    PERBAIKAN KRUSIAL: Looping prioritas kata kunci terlebih dahulu.
+    Mencegah kolom "KETERANGAN" menyerobot "KETERANGAN DET." hanya karena letaknya di kiri.
+    """
+    for kem in daftar_kemungkinan:
+        for col in df.columns:
+            col_clean = str(col).strip().lower()
             if kem.lower() in col_clean:
                 return col
     return None
@@ -181,7 +185,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     # -------------------------------------------------------------
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
-        df_pibc = perbaiki_header_file(df_pibc.copy()) # Perbaiki header tersembunyi
+        df_pibc = perbaiki_header_file(df_pibc.copy()) 
         
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
         col_act = cari_kolom_akurat(df_pibc, ['actual', 'qty', 'jumlah'])
@@ -210,9 +214,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     # -------------------------------------------------------------
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
-        df_pg = perbaiki_header_file(df_pg.copy()) # KUNCI UTAMA PERBAIKAN HEADER PG
+        df_pg = perbaiki_header_file(df_pg.copy()) 
         
-        # Prioritaskan Keterangan Det. & Hapus pencarian kata "no"
         col_ket = cari_kolom_akurat(df_pg, ['keterangan det', 'keterangan_det', 'pibc', 'keterangan'])
         col_masuk = cari_kolom_akurat(df_pg, ['masuk', 'qty', 'jumlah', 'in'])
         col_kode_var = cari_kolom_akurat(df_pg, ['kode variant', 'kode_variant', 'kode item', 'kode'])
@@ -221,7 +224,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         if col_ket and col_masuk:
             for _, r in df_pg.iterrows():
                 val_msk = bersihkan_angka_indo(r[col_masuk])
-                if val_msk <= 0: continue # Pastikan hanya menarik angka > 0
+                if val_msk <= 0: continue 
                 
                 raw_ket = str(r[col_ket])
                 extracted_pibc = ekstrak_kode_pibc(raw_ket) 
