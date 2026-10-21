@@ -128,7 +128,7 @@ def siapkan_kolom_standar(df_mb):
     else:
         df_mb['Qty BB Standar (GR)'] = seri_bb_gr
 
-    # TATA LETAK KOLOM BARU SESUAI KONSEP TRANSPARANSI TOTAL
+    # TATA LETAK KOLOM BARU
     kolom_tambahan = [
         'Qty PIBC', 'Qty PG', 
         'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)',
@@ -165,7 +165,9 @@ def ekstrak_kode_pibc(teks, gudang=""):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
+    # -------------------------------------------------------------
     # LOOKUP MASTER PIBC
+    # -------------------------------------------------------------
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
@@ -190,36 +192,44 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
-    # LOOKUP MASTER PG (Disempurnakan dengan variasi penghapusan 'PIBC-')
+    # -------------------------------------------------------------
+    # LOOKUP MASTER PG (Diperkuat dengan fungsi Ekstrak PIBC otomatis)
+    # -------------------------------------------------------------
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
-        col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc'])
-        col_masuk = cari_kolom_akurat(df_pg, ['masuk', 'qty', 'jumlah'])
-        col_kode_var = cari_kolom_akurat(df_pg, ['kode variant', 'kode', 'kode_variant', 'kode item'])
-        col_nama_var = cari_kolom_akurat(df_pg, ['nama variant', 'variant', 'nama', 'item'])
+        col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc', 'referensi', 'no'])
+        col_masuk = cari_kolom_akurat(df_pg, ['masuk', 'qty', 'jumlah', 'in'])
+        col_kode_var = cari_kolom_akurat(df_pg, ['kode variant', 'kode_variant', 'kode item', 'kode', 'item'])
+        col_nama_var = cari_kolom_akurat(df_pg, ['nama variant', 'nama_variant', 'nama', 'variant', 'deskripsi'])
         
         if col_ket and col_masuk:
             for _, r in df_pg.iterrows():
-                k_ket = str(r[col_ket]).strip().upper()
+                raw_ket = str(r[col_ket])
+                
+                # Paksa sistem mengekstrak kode PIBC agar seragam
+                extracted_pibc = ekstrak_kode_pibc(raw_ket) 
+                k_ket = extracted_pibc.upper() if extracted_pibc else raw_ket.strip().upper()
+                k_ket_clean = k_ket.replace('PIBC-', '')
+                
                 val_msk = bersihkan_angka_indo(r[col_masuk])
                 
                 if col_kode_var and pd.notna(r[col_kode_var]):
                     k_kode = str(r[col_kode_var]).strip().upper()
                     if k_kode:
                         pg_lookup[(k_ket, k_kode)] = pg_lookup.get((k_ket, k_kode), 0.0) + val_msk
-                        # Menangani penulisan Keterangan tanpa prefix 'PIBC-'
-                        pg_lookup[(k_ket.replace('PIBC-', ''), k_kode)] = pg_lookup.get((k_ket.replace('PIBC-', ''), k_kode), 0.0) + val_msk
+                        pg_lookup[(k_ket_clean, k_kode)] = pg_lookup.get((k_ket_clean, k_kode), 0.0) + val_msk
                         
                 if col_nama_var and pd.notna(r[col_nama_var]):
                     k_nama = str(r[col_nama_var]).strip().upper()
                     if k_nama:
                         pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
-                        # Menangani penulisan Keterangan tanpa prefix 'PIBC-'
-                        pg_lookup[(k_ket.replace('PIBC-', ''), k_nama)] = pg_lookup.get((k_ket.replace('PIBC-', ''), k_nama), 0.0) + val_msk
+                        pg_lookup[(k_ket_clean, k_nama)] = pg_lookup.get((k_ket_clean, k_nama), 0.0) + val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
+    # =========================================================================
     # PRE-PROCESSING: DETEKSI DAN AKUMULASI OTOMATIS CASE "CELUP GABUNG"
+    # =========================================================================
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -246,6 +256,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     val_bb = bersihkan_angka_indo(r.get('Qty BB Standar (GR)'))
                     key_item = (kp_upper, k_item)
                     gabungan_qty_item[key_item] = gabungan_qty_item.get(key_item, 0.0) + val_bb
+    # =========================================================================
 
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
@@ -412,7 +423,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             qty_pibc = pibc_lookup[k]
                             break
                             
-                    # 2. Tarik Data PG (Dengan variasi prefix remover)
+                    # 2. Tarik Data PG
                     pg_key_candidates = [
                         (kode_pibc_grup.upper(), kode_item.upper()),
                         (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
@@ -438,22 +449,35 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         sel_pg = qty_bb_cek - qty_pg
                         df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
-                    # 4. Tentukan Status Crosscheck
-                    if qty_pibc is None and qty_pg is None:
+                    # 4. PENENTUAN STATUS ADIL & TRANSPARAN
+                    status_pibc = "TIDAK ADA"
+                    status_pg = "TIDAK ADA"
+
+                    if qty_pibc is not None:
+                        status_pibc = "MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH"
+                    
+                    if qty_pg is not None:
+                        status_pg = "MATCH" if abs(sel_pg) <= 0.01 else "SELISIH"
+
+                    if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
                         df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                         status_cek_list.append(f"Kelebihan [{kode_item}]")
-                    else:
-                        match_pibc = (qty_pibc is not None and abs(sel_pibc) <= 0.01)
-                        match_pg = (qty_pg is not None and abs(sel_pg) <= 0.01)
-                        
-                        if match_pibc and match_pg:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH SEMUA'
-                        elif match_pibc and not match_pg:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG Beda)'
-                        elif match_pg and not match_pibc:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC Beda)'
-                        else:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT KEDUANYA'
+                    elif status_pibc == "MATCH" and status_pg == "MATCH":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC & PG'
+                    elif status_pibc == "MATCH" and status_pg == "SELISIH":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG SELISIH)'
+                    elif status_pibc == "MATCH" and status_pg == "TIDAK ADA":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (TIDAK ADA DI PG)'
+                    elif status_pg == "MATCH" and status_pibc == "SELISIH":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC SELISIH)'
+                    elif status_pg == "MATCH" and status_pibc == "TIDAK ADA":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (TIDAK ADA DI PIBC)'
+                    elif status_pibc == "SELISIH" and status_pg == "SELISIH":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'SELISIH KEDUANYA'
+                    elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
+                    elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA":
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
 
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
@@ -497,8 +521,8 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # Penyesuaian filter berdasarkan status output yang baru
-        df_inc = df_hasil[df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|BEDA|TIDAK DI TEMUKAN', case=False, na=False)]
+        # Filter canggih menangkap semua varian kata yang mengindikasikan masalah
+        df_inc = df_hasil[df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|SELISIH|TIDAK DI TEMUKAN|TIDAK ADA', case=False, na=False)]
         kode_grup_inc = df_inc['Kode'].unique() if 'Kode' in df_inc.columns else []
         df_full_inc = df_hasil[df_hasil['Kode'].isin(kode_grup_inc)] if len(kode_grup_inc) > 0 else df_inc
         df_full_inc.to_excel(writer, index=False, sheet_name='INCORRECT')
@@ -508,7 +532,7 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
         df_full_selisih = df_hasil[df_hasil['Kode'].isin(kode_grup_selisih)] if len(kode_grup_selisih) > 0 else df_selisih
         df_full_selisih.to_excel(writer, index=False, sheet_name='INCORRECT Memang Selisih')
 
-        df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|BEDA', case=False, na=False))]
+        df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|SELISIH', case=False, na=False))]
         kode_grup_benang = df_benang_inc['Kode'].unique() if 'Kode' in df_benang_inc.columns else []
         df_full_benang = df_hasil[df_hasil['Kode'].isin(kode_grup_benang)] if len(kode_grup_benang) > 0 else df_benang_inc
         df_full_benang.to_excel(writer, index=False, sheet_name='INCORRECT Benang')
