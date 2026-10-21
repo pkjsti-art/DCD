@@ -157,30 +157,46 @@ def ekstrak_kode_pibc(teks, gudang=""):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
+    # -------------------------------------------------------------
+    # PERBAIKAN: Lookup Master PIBC (Menggunakan Kolom KODE OBAT)
+    # -------------------------------------------------------------
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
-        col_item = cari_kolom_akurat(df_pibc, ['obat', 'item', 'nama'])
+        col_pibc_kode = cari_kolom_akurat(df_pibc, ['kode obat', 'kode_obat', 'kode item', 'kode_item', 'kode'])
         col_act = cari_kolom_akurat(df_pibc, ['actual', 'qty'])
-        if col_dyelot and col_item and col_act:
+        
+        if col_dyelot and col_pibc_kode and col_act:
             for _, r in df_pibc.iterrows():
                 k_dyelot = str(r[col_dyelot]).strip().upper()
-                k_item = str(r[col_item]).strip().upper()
+                k_item = str(r[col_pibc_kode]).strip().upper()
                 val_act = bersihkan_angka_indo(r[col_act])
-                pibc_lookup[(k_dyelot, k_item)] = val_act
-                pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_item)] = val_act
+                
+                key_1 = (k_dyelot, k_item)
+                key_2 = (k_dyelot.replace('PIBC-', ''), k_item)
+                
+                # Akumulasi nilai (dijumlahkan) jika ada duplikat kode PIBC + kode obat
+                pibc_lookup[key_1] = pibc_lookup.get(key_1, 0.0) + val_act
+                pibc_lookup[key_2] = pibc_lookup.get(key_2, 0.0) + val_act
 
+    # -------------------------------------------------------------
+    # PERBAIKAN: Lookup Master PG (Menggunakan Kolom KODE VARIANT)
+    # -------------------------------------------------------------
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc'])
-        col_var = cari_kolom_akurat(df_pg, ['variant', 'item', 'nama'])
+        col_pg_kode = cari_kolom_akurat(df_pg, ['kode variant', 'kode_variant', 'kode item', 'kode_item', 'kode'])
         col_masuk = cari_kolom_akurat(df_pg, ['masuk', 'qty'])
-        if col_ket and col_var and col_masuk:
+        
+        if col_ket and col_pg_kode and col_masuk:
             for _, r in df_pg.iterrows():
                 k_ket = str(r[col_ket]).strip().upper()
-                k_var = str(r[col_var]).strip().upper()
+                k_var = str(r[col_pg_kode]).strip().upper()
                 val_msk = bersihkan_angka_indo(r[col_masuk])
-                pg_lookup[(k_ket, k_var)] = val_msk
+                
+                key_pg = (k_ket, k_var)
+                # Akumulasi nilai (dijumlahkan) jika ada duplikat kode PG + kode variant
+                pg_lookup[key_pg] = pg_lookup.get(key_pg, 0.0) + val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
@@ -197,7 +213,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
-            nama_item = str(row.get('Nama Item', '')).strip()
             gudang = str(row.get('Gudang', '')).strip().upper()
             ket = str(row.get('Keterangan', ''))
             ket_lain = str(row.get('Keterangan Lain', ''))
@@ -218,7 +233,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if isinstance(val_bb, (int, float)):
                     total_bb_benang_grup += float(val_bb)
                 
-                # Mengumpulkan semua kode benang
                 if kode_item not in rincian_benang_list:
                     rincian_benang_list.append(kode_item)
 
@@ -237,7 +251,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
-            nama_item = str(row.get('Nama Item', '')).strip()
             gudang = str(row.get('Gudang', '')).strip().upper()
 
             benang_flag = is_item_benang(kode_item, gudang)
@@ -257,7 +270,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
                 df_mb.at[idx, 'Status PIBC'] = ''
                 df_mb.at[idx, 'Ext_PIBC'] = ''
-                # Terapkan forward fill Rincian Benang ke baris yang dihiraukan
                 df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'DYEING STI' not in gudang else ''
                 continue
 
@@ -273,12 +285,17 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 is_first_row = False
                 continue
 
-            df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
+            # -------------------------------------------------------------
+            # PERBAIKAN: Status PIBC Hanya di Baris Pertama
+            # -------------------------------------------------------------
+            if is_first_row:
+                df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
+            else:
+                df_mb.at[idx, 'Status PIBC'] = ''
+                
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
+            # -------------------------------------------------------------
 
-            # -------------------------------------------------------------
-            # PENERAPAN FORWARD FILL RINCIAN BENANG KE SEMUA BARIS
-            # -------------------------------------------------------------
             if 'DYEING STI' in gudang:
                 if not kode_item.startswith('TBB'):
                     df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
@@ -286,7 +303,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     df_mb.at[idx, 'Rincian Benang'] = ''
             else:
                 df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str
-            # -------------------------------------------------------------
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             ket = str(row.get('Keterangan', ''))
@@ -380,9 +396,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_first_row = False
 
-        # -------------------------------------------------------------
-        # PENGOSONGAN STATUS CEK UNTUK SOFTCONE
-        # -------------------------------------------------------------
         idx_first = df_sub.index[0]
         
         gudang_group = ""
