@@ -192,9 +192,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         ada_item_non_tbb_sti = False
         
         # 1. Scan Awal Kelompok
+        rincian_benang_list = []
+        
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
+            nama_item = str(row.get('Nama Item', '')).strip()
             gudang = str(row.get('Gudang', '')).strip().upper()
             ket = str(row.get('Keterangan', ''))
             ket_lain = str(row.get('Keterangan Lain', ''))
@@ -214,11 +217,18 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 val_bb = row.get('Qty BB Standar (GR)')
                 if isinstance(val_bb, (int, float)):
                     total_bb_benang_grup += float(val_bb)
+                
+                # Mengumpulkan semua kode benang dalam 1 kelompok transaksi MB
+                if kode_item not in rincian_benang_list:
+                    rincian_benang_list.append(kode_item)
 
             if 'DYEING STI' in gudang:
                 is_diabaikan_check = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper())
                 if not is_diabaikan_check and kode_item and not kode_item.startswith('TBB'):
                     ada_item_non_tbb_sti = True
+
+        # Menggabungkan kode benang menjadi satu string (misal: "TWP.001, TWP.002")
+        rincian_benang_str = ", ".join(rincian_benang_list)
 
         status_pibc_grup = 'KODE PIBC ADA' if grup_punya_pibc else 'KODE PIBC TIDAK ADA'
         is_first_row = True
@@ -228,6 +238,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
+            nama_item = str(row.get('Nama Item', '')).strip()
             gudang = str(row.get('Gudang', '')).strip().upper()
 
             benang_flag = is_item_benang(kode_item, gudang)
@@ -247,7 +258,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
                 df_mb.at[idx, 'Status PIBC'] = ''
                 df_mb.at[idx, 'Ext_PIBC'] = ''
-                df_mb.at[idx, 'Rincian Benang'] = ''
+                # Tetap lakukan forward fill Rincian Benang kecuali di Gudang Dyeing STI
+                df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'DYEING STI' not in gudang else ''
                 continue
 
             if 'DYEING STI' in gudang and not ada_item_non_tbb_sti:
@@ -265,6 +277,19 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
+            # -------------------------------------------------------------
+            # PENERAPAN FORWARD FILL RINCIAN BENANG
+            # -------------------------------------------------------------
+            if 'DYEING STI' in gudang:
+                if not kode_item.startswith('TBB'):
+                    df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
+                else:
+                    df_mb.at[idx, 'Rincian Benang'] = ''
+            else:
+                # Forward fill kode benang ke seluruh baris transaksi (Benang, Chemical, dll)
+                df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str
+            # -------------------------------------------------------------
+
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             ket = str(row.get('Keterangan', ''))
             ket_lain = str(row.get('Keterangan Lain', ''))
@@ -274,7 +299,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             # A. PENGECEKAN BENANG
             if benang_flag:
-                df_mb.at[idx, 'Rincian Benang'] = kode_item
                 val_bb = row.get('Qty BB Standar (GR)')
                 qty_bb_baris = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 
@@ -300,11 +324,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             # B. PENGECEKAN CHEMICAL & DYESTUFF
             else:
-                df_mb.at[idx, 'Rincian Benang'] = ''
-                
-                if 'DYEING STI' in gudang and not kode_item.startswith('TBB'):
-                    df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
-
                 val_bb = row.get('Qty BB Standar (GR)')
                 qty_bb = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 
@@ -365,8 +384,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
         idx_first = df_sub.index[0]
         gudang_first = str(df_mb.loc[idx_first].get('Gudang', '')).strip().upper()
-        if 'DYEING STI' in gudang_first and not ada_item_non_tbb_sti:
-            df_mb.at[idx_first, 'Status Cek'] = ''
+        
+        is_softcone_group = 'SOFTCONE' in gudang_first or (gudang_first == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(PREFIX_BENANG_VALID))
+
+        if ('DYEING STI' in gudang_first and not ada_item_non_tbb_sti) or is_softcone_group:
+            df_mb.at[idx_first, 'Status Cek'] = '' 
         else:
             if status_cek_list:
                 df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list)))
