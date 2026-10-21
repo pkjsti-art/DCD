@@ -3,7 +3,6 @@ import re
 import io
 
 def cari_kolom_akurat(df, daftar_kemungkinan):
-    """Mencari nama kolom di DataFrame secara fleksibel berdasarkan daftar kemungkinan."""
     for col in df.columns:
         col_clean = str(col).strip().lower()
         for kem in daftar_kemungkinan:
@@ -14,52 +13,79 @@ def cari_kolom_akurat(df, daftar_kemungkinan):
 def siapkan_kolom_standar(df_mb):
     """
     Menyisipkan Qty Target Standar (GR) tepat di sebelah kanan Target Unit,
-    dan Qty BB Standar (GR) tepat di sebelah kanan Qty/Unit secara presisi.
+    dan Qty BB Standar (GR) tepat di sebelah kanan Qty secara presisi.
     """
-    col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
-    col_target_unit = cari_kolom_akurat(df_mb, ['target unit', 'target_unit'])
-    
-    col_bb_qty = cari_kolom_akurat(df_mb, ['qty', 'quantity'])
-    col_bb_unit = cari_kolom_akurat(df_mb, ['unit', 'satuan'])
+    col_target_qty = None
+    col_target_unit = None
+    col_qty = None
+    col_unit = None
+
+    for col in df_mb.columns:
+        c_lower = str(col).strip().lower()
+        if 'target' in c_lower and ('qty' in c_lower or 'quantity' in c_lower):
+            col_target_qty = col
+        elif 'target' in c_lower and 'unit' in c_lower:
+            col_target_unit = col
+        elif c_lower in ['qty', 'quantity'] and 'target' not in c_lower and 'bb' not in c_lower:
+            col_qty = col
+        elif c_lower in ['unit', 'satuan'] and 'target' not in c_lower:
+            col_unit = col
+
+    # Fallback pencarian fleksibel jika nama kolom sedikit berbeda
+    if not col_target_qty:
+        col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
+    if not col_target_unit:
+        col_target_unit = cari_kolom_akurat(df_mb, ['target unit', 'target_unit'])
+    if not col_qty:
+        col_qty = cari_kolom_akurat(df_mb, ['qty'])
+    if not col_unit:
+        col_unit = cari_kolom_akurat(df_mb, ['unit', 'satuan'])
 
     # 1. Hitung Qty Target Standar (GR)
     seri_target_gr = pd.Series([0.0] * len(df_mb))
-    if col_target_qty and col_target_unit:
+    if col_target_qty:
         for idx, r in df_mb.iterrows():
-            unit = str(r[col_target_unit]).strip().upper()
             try:
-                val = float(str(r[col_target_qty]).replace(',', '').strip())
+                val_str = str(r[col_target_qty]).replace(',', '').strip()
+                val = float(val_str) if val_str and val_str.lower() != 'nan' else 0.0
             except:
                 val = 0.0
+            unit = str(r[col_target_unit]).strip().upper() if col_target_unit in df_mb.columns and pd.notna(r[col_target_unit]) else 'GR'
             seri_target_gr[idx] = val if unit == 'GR' else val * 1000.0
 
-    # 2. Hitung Qty BB Standar (GR)
+    # 2. Hitung Qty BB Standar (GR) murni dari kolom Qty & Unit
     seri_bb_gr = pd.Series([0.0] * len(df_mb))
-    if col_bb_qty and col_bb_unit:
+    if col_qty:
         for idx, r in df_mb.iterrows():
-            unit = str(r[col_bb_unit]).strip().upper()
             try:
-                val = float(str(r[col_bb_qty]).replace(',', '').strip())
+                val_str = str(r[col_qty]).replace(',', '').strip()
+                val = float(val_str) if val_str and val_str.lower() != 'nan' else 0.0
             except:
                 val = 0.0
+            unit = str(r[col_unit]).strip().upper() if col_unit in df_mb.columns and pd.notna(r[col_unit]) else 'GR'
             seri_bb_gr[idx] = val if unit == 'GR' else val * 1000.0
 
-    # Sisipkan kolom tepat di sebelah kanan target unit & qty bb
+    # Sisipkan Qty Target Standar (GR) di sebelah kanan Target Unit
     if col_target_unit in df_mb.columns:
         idx_target = list(df_mb.columns).index(col_target_unit) + 1
+        df_mb.insert(idx_target, 'Qty Target Standar (GR)', seri_target_gr)
+    elif col_target_qty in df_mb.columns:
+        idx_target = list(df_mb.columns).index(col_target_qty) + 1
         df_mb.insert(idx_target, 'Qty Target Standar (GR)', seri_target_gr)
     else:
         df_mb['Qty Target Standar (GR)'] = seri_target_gr
 
-    if col_bb_qty in df_mb.columns:
-        idx_bb = list(df_mb.columns).index(col_bb_qty) + 1
+    # Sisipkan Qty BB Standar (GR) tepat di sebelah kanan Qty
+    if col_qty in df_mb.columns:
+        idx_bb = list(df_mb.columns).index(col_qty) + 1
         df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
     else:
         df_mb['Qty BB Standar (GR)'] = seri_bb_gr
 
-    # Tambahkan kolom penampung hasil kalkulasi
+    # Tambahkan kolom penampung hasil kalkulasi lainnya
     for col_baru in ['Crosscheck Qty', 'Qty PIBC', 'Qty PG', 'Selisih (GR)', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant']:
-        df_mb[col_baru] = ''
+        if col_baru not in df_mb.columns:
+            df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
     return df_mb
@@ -90,7 +116,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     ]
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # Buat lookup terstruktur untuk Master PIBC
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
@@ -107,7 +132,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 pibc_lookup[(k_dyelot, k_item)] = val_act
                 pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_item)] = val_act
 
-    # Buat lookup terstruktur untuk Master PG
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc'])
