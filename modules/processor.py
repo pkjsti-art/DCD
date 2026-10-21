@@ -128,7 +128,15 @@ def siapkan_kolom_standar(df_mb):
     else:
         df_mb['Qty BB Standar (GR)'] = seri_bb_gr
 
-    for col_baru in ['Crosscheck Qty', 'Qty PIBC', 'Qty PG', 'Selisih (GR)', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant']:
+    # TATA LETAK KOLOM BARU SESUAI KONSEP TRANSPARANSI TOTAL
+    kolom_tambahan = [
+        'Qty PIBC', 'Qty PG', 
+        'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)',
+        'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 
+        'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC'
+    ]
+    
+    for col_baru in kolom_tambahan:
         if col_baru not in df_mb.columns:
             df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
@@ -157,14 +165,11 @@ def ekstrak_kode_pibc(teks, gudang=""):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # ---------------------------------------------------------------------------------
-    # PERBAIKAN LOGIKA LOOKUP PIBC (Pencarian Ganda: Berdasarkan KODE atau NAMA ITEM)
-    # ---------------------------------------------------------------------------------
+    # LOOKUP MASTER PIBC (Double Matching)
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
         col_act = cari_kolom_akurat(df_pibc, ['actual', 'qty', 'jumlah'])
-        # Deteksi kolom kode dan nama secara terpisah agar lebih aman
         col_kode_obat = cari_kolom_akurat(df_pibc, ['kode obat', 'kode', 'kode_obat', 'kode item'])
         col_nama_obat = cari_kolom_akurat(df_pibc, ['obat', 'nama', 'item', 'deskripsi'])
         
@@ -173,23 +178,19 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_dyelot = str(r[col_dyelot]).strip().upper()
                 val_act = bersihkan_angka_indo(r[col_act])
                 
-                # Masukkan ke dictionary berdasarkan Kode Obat
                 if col_kode_obat and pd.notna(r[col_kode_obat]):
                     k_kode = str(r[col_kode_obat]).strip().upper()
                     if k_kode:
                         pibc_lookup[(k_dyelot, k_kode)] = pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_kode)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_kode), 0.0) + val_act
                 
-                # Masukkan ke dictionary berdasarkan Nama Obat
                 if col_nama_obat and pd.notna(r[col_nama_obat]):
                     k_nama = str(r[col_nama_obat]).strip().upper()
                     if k_nama:
                         pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
-    # ---------------------------------------------------------------------------------
-    # PERBAIKAN LOGIKA LOOKUP PG (Pencarian Ganda: Berdasarkan KODE atau NAMA VARIANT)
-    # ---------------------------------------------------------------------------------
+    # LOOKUP MASTER PG (Double Matching)
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc'])
@@ -213,6 +214,37 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
+
+    # =========================================================================
+    # PRE-PROCESSING: DETEKSI DAN AKUMULASI OTOMATIS CASE "CELUP GABUNG"
+    # =========================================================================
+    pibc_to_mb = {}
+    gabungan_qty_item = {}
+
+    for k_val, df_sub in grup_kode:
+        kp = None
+        for idx, r in df_sub.iterrows():
+            gudang = str(r.get('Gudang', '')).strip().upper()
+            teks_gab = str(r.get('Keterangan', '')) + " " + str(r.get('Keterangan Lain', ''))
+            kp = ekstrak_kode_pibc(teks_gab, gudang)
+            if kp: break
+            
+        if kp:
+            kp_upper = kp.upper()
+            if kp_upper not in pibc_to_mb:
+                pibc_to_mb[kp_upper] = []
+            if k_val not in pibc_to_mb[kp_upper]:
+                pibc_to_mb[kp_upper].append(k_val)
+
+            for idx, r in df_sub.iterrows():
+                k_item = str(r.get('Kode Item', '')).strip().upper()
+                gudang = str(r.get('Gudang', '')).strip().upper()
+                benang_flag = is_item_benang(k_item, gudang)
+                if not benang_flag and k_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in k_item:
+                    val_bb = bersihkan_angka_indo(r.get('Qty BB Standar (GR)'))
+                    key_item = (kp_upper, k_item)
+                    gabungan_qty_item[key_item] = gabungan_qty_item.get(key_item, 0.0) + val_bb
+    # =========================================================================
 
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
@@ -257,6 +289,18 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
         rincian_benang_str = ", ".join(rincian_benang_list)
 
+        # 2. Penentuan Status Celup Gabung untuk Kelompok Ini
+        is_celup_gabung = False
+        pasangan_str = ""
+        if kode_pibc_grup:
+            semua_mb = pibc_to_mb.get(kode_pibc_grup.upper(), [])
+            if len(semua_mb) > 1:
+                is_celup_gabung = True
+                pasangan = [str(m) for m in semua_mb if m != k_val]
+                pasangan_str = ", ".join(pasangan)
+
+        info_cg_base = f"Celup Gabung dgn: {pasangan_str}" if is_celup_gabung else ""
+
         status_pibc_grup = 'KODE PIBC ADA' if grup_punya_pibc else 'KODE PIBC TIDAK ADA'
         is_first_row = True
         benang_status_rendered = False
@@ -276,35 +320,31 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 ('SOFTCONE' in gudang and not benang_flag)
             )
 
+            # Kosongkan semua kolom kalkulasi di awal
+            df_mb.at[idx, 'Crosscheck Qty'] = ''
+            df_mb.at[idx, 'Qty PIBC'] = ''
+            df_mb.at[idx, 'Qty PG'] = ''
+            df_mb.at[idx, 'Selisih Benang (GR)'] = ''
+            df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
+            df_mb.at[idx, 'Selisih PG (GR)'] = ''
+            df_mb.at[idx, 'Status PIBC'] = ''
+            df_mb.at[idx, 'Ext_PIBC'] = ''
+            df_mb.at[idx, 'Info Celup Gabung'] = ''
+
             if is_diabaikan:
-                df_mb.at[idx, 'Crosscheck Qty'] = ''
-                df_mb.at[idx, 'Qty PIBC'] = ''
-                df_mb.at[idx, 'Qty PG'] = ''
-                df_mb.at[idx, 'Selisih (GR)'] = ''
                 df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
-                df_mb.at[idx, 'Status PIBC'] = ''
-                df_mb.at[idx, 'Ext_PIBC'] = ''
                 df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'DYEING STI' not in gudang else ''
                 continue
 
             if 'DYEING STI' in gudang and not ada_item_non_tbb_sti:
-                df_mb.at[idx, 'Status PIBC'] = ''
-                df_mb.at[idx, 'Ext_PIBC'] = ''
-                df_mb.at[idx, 'Crosscheck Qty'] = ''
                 df_mb.at[idx, 'Rincian Benang'] = ''
-                df_mb.at[idx, 'Qty PIBC'] = ''
-                df_mb.at[idx, 'Qty PG'] = ''
-                df_mb.at[idx, 'Selisih (GR)'] = ''
                 df_mb.at[idx, 'Cek Variant'] = ''
                 is_first_row = False
                 continue
 
-            # Hanya tulis Status PIBC pada baris pertama saja
             if is_first_row:
                 df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
-            else:
-                df_mb.at[idx, 'Status PIBC'] = ''
                 
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
@@ -323,13 +363,13 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
 
-            # A. PENGECEKAN BENANG
+            # A. JALUR PENGECEKAN BENANG
             if benang_flag:
                 val_bb = row.get('Qty BB Standar (GR)')
                 qty_bb_baris = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 
                 selisih_baris = qty_bb_baris - target_gr_utama_grup
-                df_mb.at[idx, 'Selisih (GR)'] = selisih_baris
+                df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_baris
 
                 if not benang_status_rendered:
                     selisih_total = total_bb_benang_grup - target_gr_utama_grup
@@ -345,61 +385,76 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             else:
                                 df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
                     benang_status_rendered = True
-                else:
-                    df_mb.at[idx, 'Crosscheck Qty'] = ''
 
-            # B. PENGECEKAN CHEMICAL & DYESTUFF (Match dengan Kode ATAU Nama)
+            # B. JALUR PENGECEKAN CHEMICAL & DYESTUFF (Transparansi Total)
             else:
                 val_bb = row.get('Qty BB Standar (GR)')
                 qty_bb = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 
-                if not kode_pibc_grup:
-                    df_mb.at[idx, 'Qty PIBC'] = ''
-                    df_mb.at[idx, 'Qty PG'] = ''
-                    df_mb.at[idx, 'Selisih (GR)'] = ''
-                    df_mb.at[idx, 'Crosscheck Qty'] = ''
+                if is_celup_gabung and kode_pibc_grup:
+                    qty_bb_cek = gabungan_qty_item.get((kode_pibc_grup.upper(), kode_item.upper()), qty_bb)
+                    df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                 else:
-                    matched = False
-                    # Cari kecocokan berdasarkan kombinasi Kode atau Nama
+                    qty_bb_cek = qty_bb
+
+                if kode_pibc_grup:
+                    qty_pibc = None
+                    qty_pg = None
+                    
+                    # 1. Tarik Data PIBC
                     pibc_key_candidates = [
                         (kode_pibc_grup.upper(), kode_item.upper()),
                         (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
                         (kode_pibc_grup.upper(), nama_item.upper()),
                         (kode_pibc_grup.upper().replace('PIBC-', ''), nama_item.upper())
                     ]
-                    
                     for k in pibc_key_candidates:
-                        if k[1] and k in pibc_lookup: # Pastikan keyword pencarian tidak kosong
-                            qty_act = pibc_lookup[k]
-                            df_mb.at[idx, 'Qty PIBC'] = qty_act
-                            selisih = qty_bb - qty_act
-                            df_mb.at[idx, 'Selisih (GR)'] = selisih
-                            matched = True
+                        if k[1] and k in pibc_lookup:
+                            qty_pibc = pibc_lookup[k]
                             break
                             
-                    if not matched:
-                        pg_key_candidates = [
-                            (kode_pibc_grup.upper(), kode_item.upper()),
-                            (kode_pibc_grup.upper(), nama_item.upper())
-                        ]
-                        for k in pg_key_candidates:
-                            if k[1] and k in pg_lookup:
-                                qty_masuk = pg_lookup[k]
-                                df_mb.at[idx, 'Qty PG'] = qty_masuk
-                                selisih = qty_bb - qty_masuk
-                                df_mb.at[idx, 'Selisih (GR)'] = selisih
-                                matched = True
-                                break
+                    # 2. Tarik Data PG
+                    pg_key_candidates = [
+                        (kode_pibc_grup.upper(), kode_item.upper()),
+                        (kode_pibc_grup.upper(), nama_item.upper())
+                    ]
+                    for k in pg_key_candidates:
+                        if k[1] and k in pg_lookup:
+                            qty_pg = pg_lookup[k]
+                            break
 
-                    if matched:
-                        if abs(selisih) <= 0.01:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
-                        else:
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
-                    else:
+                    # 3. Hitung Selisih Paralel
+                    sel_pibc = None
+                    sel_pg = None
+                    
+                    if qty_pibc is not None:
+                        df_mb.at[idx, 'Qty PIBC'] = qty_pibc
+                        sel_pibc = qty_bb_cek - qty_pibc
+                        df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
+                        
+                    if qty_pg is not None:
+                        df_mb.at[idx, 'Qty PG'] = qty_pg
+                        sel_pg = qty_bb_cek - qty_pg
+                        df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
+
+                    # 4. Tentukan Status Crosscheck
+                    if qty_pibc is None and qty_pg is None:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                         status_cek_list.append(f"Kelebihan [{kode_item}]")
+                    else:
+                        match_pibc = (qty_pibc is not None and abs(sel_pibc) <= 0.01)
+                        match_pg = (qty_pg is not None and abs(sel_pg) <= 0.01)
+                        
+                        if match_pibc and match_pg:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH SEMUA'
+                        elif match_pibc and not match_pg:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG Beda)'
+                        elif match_pg and not match_pibc:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC Beda)'
+                        else:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT KEDUANYA'
 
+            # PENGECEKAN VARIANT DI BARIS PERTAMA
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
                 if 'MESIN DYEING' in gudang:
@@ -415,6 +470,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_first_row = False
 
+        # STATUS CEK (Kelengkapan Item)
         idx_first = df_sub.index[0]
         
         gudang_group = ""
@@ -440,7 +496,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 def buat_excel_incorrect_multi_sheet(df_hasil):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_inc = df_hasil[df_hasil['Crosscheck Qty'] == 'INCORRECT']
+        
+        # Penyesuaian filter berdasarkan status output yang baru
+        df_inc = df_hasil[df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|BEDA|TIDAK DI TEMUKAN', case=False, na=False)]
         kode_grup_inc = df_inc['Kode'].unique() if 'Kode' in df_inc.columns else []
         df_full_inc = df_hasil[df_hasil['Kode'].isin(kode_grup_inc)] if len(kode_grup_inc) > 0 else df_inc
         df_full_inc.to_excel(writer, index=False, sheet_name='INCORRECT')
@@ -450,10 +508,11 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
         df_full_selisih = df_hasil[df_hasil['Kode'].isin(kode_grup_selisih)] if len(kode_grup_selisih) > 0 else df_selisih
         df_full_selisih.to_excel(writer, index=False, sheet_name='INCORRECT Memang Selisih')
 
-        df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'] == 'INCORRECT')]
+        df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|BEDA', case=False, na=False))]
         kode_grup_benang = df_benang_inc['Kode'].unique() if 'Kode' in df_benang_inc.columns else []
         df_full_benang = df_hasil[df_hasil['Kode'].isin(kode_grup_benang)] if len(kode_grup_benang) > 0 else df_benang_inc
         df_full_benang.to_excel(writer, index=False, sheet_name='INCORRECT Benang')
+        
     return output.getvalue()
 
 
