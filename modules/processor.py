@@ -10,6 +10,33 @@ def cari_kolom_akurat(df, daftar_kemungkinan):
                 return col
     return None
 
+def bersihkan_angka_indo(val):
+    """
+    Mengonversi string angka format Indonesia/Excel (contoh: '1.400,00' -> 1400.0, '700,00' -> 700.0)
+    """
+    if pd.isna(val) or val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() == 'nan':
+        return 0.0
+        
+    # Jika mengandung koma sebagai desimal (contoh: 1.400,00 atau 700,00)
+    if ',' in val_str:
+        val_str = val_str.replace('.', '')  # Hapus titik ribuan
+        val_str = val_str.replace(',', '.')  # Ubah koma desimal jadi titik
+    else:
+        # Jika hanya ada titik dan lebih dari 1 titik (contoh 1.000.000)
+        if val_str.count('.') > 1:
+            val_str = val_str.replace('.', '')
+            
+    try:
+        return float(val_str)
+    except:
+        return 0.0
+
 def siapkan_kolom_standar(df_mb):
     """
     Menyisipkan Qty Target Standar (GR) tepat di sebelah kanan Target Unit,
@@ -31,7 +58,6 @@ def siapkan_kolom_standar(df_mb):
         elif c_lower in ['unit', 'satuan'] and 'target' not in c_lower:
             col_unit = col
 
-    # Fallback pencarian fleksibel jika nama kolom sedikit berbeda
     if not col_target_qty:
         col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
     if not col_target_unit:
@@ -45,23 +71,15 @@ def siapkan_kolom_standar(df_mb):
     seri_target_gr = pd.Series([0.0] * len(df_mb))
     if col_target_qty:
         for idx, r in df_mb.iterrows():
-            try:
-                val_str = str(r[col_target_qty]).replace(',', '').strip()
-                val = float(val_str) if val_str and val_str.lower() != 'nan' else 0.0
-            except:
-                val = 0.0
+            val = bersihkan_angka_indo(r[col_target_qty])
             unit = str(r[col_target_unit]).strip().upper() if col_target_unit in df_mb.columns and pd.notna(r[col_target_unit]) else 'GR'
             seri_target_gr[idx] = val if unit == 'GR' else val * 1000.0
 
-    # 2. Hitung Qty BB Standar (GR) murni dari kolom Qty & Unit
+    # 2. Hitung Qty BB Standar (GR)
     seri_bb_gr = pd.Series([0.0] * len(df_mb))
     if col_qty:
         for idx, r in df_mb.iterrows():
-            try:
-                val_str = str(r[col_qty]).replace(',', '').strip()
-                val = float(val_str) if val_str and val_str.lower() != 'nan' else 0.0
-            except:
-                val = 0.0
+            val = bersihkan_angka_indo(r[col_qty])
             unit = str(r[col_unit]).strip().upper() if col_unit in df_mb.columns and pd.notna(r[col_unit]) else 'GR'
             seri_bb_gr[idx] = val if unit == 'GR' else val * 1000.0
 
@@ -82,7 +100,7 @@ def siapkan_kolom_standar(df_mb):
     else:
         df_mb['Qty BB Standar (GR)'] = seri_bb_gr
 
-    # Tambahkan kolom penampung hasil kalkulasi lainnya
+    # Tambahkan kolom penampung hasil kalkulasi
     for col_baru in ['Crosscheck Qty', 'Qty PIBC', 'Qty PG', 'Selisih (GR)', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant']:
         if col_baru not in df_mb.columns:
             df_mb[col_baru] = ''
@@ -125,10 +143,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             for _, r in df_pibc.iterrows():
                 k_dyelot = str(r[col_dyelot]).strip().upper()
                 k_item = str(r[col_item]).strip().upper()
-                try:
-                    val_act = float(str(r[col_act]).replace(',', '').strip())
-                except:
-                    val_act = 0.0
+                val_act = bersihkan_angka_indo(r[col_act])
                 pibc_lookup[(k_dyelot, k_item)] = val_act
                 pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_item)] = val_act
 
@@ -141,10 +156,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             for _, r in df_pg.iterrows():
                 k_ket = str(r[col_ket]).strip().upper()
                 k_var = str(r[col_var]).strip().upper()
-                try:
-                    val_msk = float(str(r[col_masuk]).replace(',', '').strip())
-                except:
-                    val_msk = 0.0
+                val_msk = bersihkan_angka_indo(r[col_masuk])
                 pg_lookup[(k_ket, k_var)] = val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
