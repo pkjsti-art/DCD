@@ -24,7 +24,7 @@ def perbaiki_header_pg(df):
     if df.empty: return df
     for i in range(min(15, len(df))):
         baris = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
-        if 'MASUK' in baris and 'GUDANG' in baris:
+        if 'MASUK' in baris:
             df.columns = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
             return df.iloc[i+1:].reset_index(drop=True)
     return df
@@ -65,16 +65,13 @@ def is_item_benang(kode_item, gudang=""):
 def ekstrak_kode_pibc(teks, gudang=""):
     if pd.isna(teks): return None
     teks_str = str(teks)
-    g_norm = normalisasi_gudang(gudang)
-    if 'Mesin Dyeing' in g_norm or 'STI' in g_norm:
-        if 'REPROCES' in teks_str.upper() or 'TO' in teks_str.upper():
-            match_kurung = re.search(r'\((PIBC-[A-Za-z0-9#\-\.]+)\)', teks_str, re.IGNORECASE)
-            if match_kurung: return match_kurung.group(1).strip().rstrip('.')
-            match_to = re.search(r'TO\s+([A-Za-z0-9\-\#]+)', teks_str, re.IGNORECASE)
-            if match_to: return match_to.group(1).strip().rstrip('.')
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
     hasil = re.search(pola, teks_str, re.IGNORECASE)
     if hasil: return hasil.group(1).strip().rstrip('.')
+    # Fallback pencarian angka polos jika format PIBC- tidak ditemukan
+    match_angka = re.search(r'([0-9]{8,})', teks_str)
+    if match_angka:
+        return match_angka.group(1).strip()
     return None
 
 def siapkan_kolom_standar(df_mb):
@@ -157,31 +154,28 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
-    # 2. SETUP LOOKUP MASTER PG
+    # 2. SETUP LOOKUP MASTER PG (ALTERNATIF DIRECT MATCH TANPA FILTER GUDANG YANG KETAT)
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         df_pg = perbaiki_header_pg(df_pg.copy()) 
         
-        col_gudang = cari_kolom_akurat(df_pg, ['GUDANG'])
         col_masuk = cari_kolom_akurat(df_pg, ['MASUK'])
         col_ket_det = cari_kolom_akurat(df_pg, ['KETERANGAN DET', 'KETERANGAN_DET', 'KETERANGAN DET.'])
         col_kode_var = cari_kolom_akurat(df_pg, ['KODE VARIANT', 'KODE ITEM'])
         col_nama_var = cari_kolom_akurat(df_pg, ['NAMA VARIANT', 'NAMA ITEM'])
         
-        if col_gudang and col_ket_det and col_masuk:
+        if col_ket_det and col_masuk:
             for _, r in df_pg.iterrows():
                 val_msk = bersihkan_angka_indo(r[col_masuk])
-                if val_msk <= 0: continue 
-                
-                gudang_pg = normalisasi_gudang(r[col_gudang])
-                if gudang_pg not in ['Gudang Lab & RnD', 'Gudang Mesin Dyeing']: 
-                    continue
+                if val_msk <= 0: continue # Hanya ambil yang MASUK > 0
                 
                 raw_pibc = str(r[col_ket_det])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
                 pibc_ext = ekstrak_kode_pibc(raw_pibc)
-                k_ket = pibc_ext.upper() if pibc_ext else raw_pibc.strip().upper()
+                if not pibc_ext: continue
+                
+                k_ket = pibc_ext.upper()
                 k_ket_clean = k_ket.replace('PIBC-', '')
                 
                 k_kode = str(r[col_kode_var]).strip().upper() if col_kode_var and pd.notna(r[col_kode_var]) else ""
@@ -337,6 +331,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             qty_pibc = pibc_lookup[k]
                             break
                             
+                    # Pencarian PG Alternatif Langsung Tembak Kunci (PIBC & Item)
                     pg_key_candidates = [
                         (kode_pibc_grup.upper(), kode_item.upper()),
                         (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
