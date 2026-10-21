@@ -19,7 +19,7 @@ st.set_page_config(
 st.title("DATA CONTROL DYEING (DCD)")
 st.markdown("Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.")
 
-# Inisialisasi Session State
+# Inisialisasi Session State agar data tetap stay (tidak reset saat download)
 if 'df_hasil_crosscheck' not in st.session_state:
     st.session_state['df_hasil_crosscheck'] = None
 if 'df_pibc_bersih' not in st.session_state:
