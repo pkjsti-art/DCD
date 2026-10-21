@@ -67,8 +67,8 @@ def ekstrak_kode_pibc(teks, gudang=""):
     teks_str = str(teks)
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
     hasil = re.search(pola, teks_str, re.IGNORECASE)
-    if hasil: return hasil.group(1).strip().rstrip('.')
-    # Fallback pencarian angka polos jika format PIBC- tidak ditemukan
+    if hasil:
+        return hasil.group(1).strip().rstrip('.')
     match_angka = re.search(r'([0-9]{8,})', teks_str)
     if match_angka:
         return match_angka.group(1).strip()
@@ -154,7 +154,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
-    # 2. SETUP LOOKUP MASTER PG (ALTERNATIF DIRECT MATCH TANPA FILTER GUDANG YANG KETAT)
+    # 2. SETUP LOOKUP MASTER PG
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         df_pg = perbaiki_header_pg(df_pg.copy()) 
@@ -167,7 +167,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         if col_ket_det and col_masuk:
             for _, r in df_pg.iterrows():
                 val_msk = bersihkan_angka_indo(r[col_masuk])
-                if val_msk <= 0: continue # Hanya ambil yang MASUK > 0
+                if val_msk <= 0: continue 
                 
                 raw_pibc = str(r[col_ket_det])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
@@ -175,44 +175,50 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 pibc_ext = ekstrak_kode_pibc(raw_pibc)
                 if not pibc_ext: continue
                 
-                k_ket = pibc_ext.upper()
-                k_ket_clean = k_ket.replace('PIBC-', '')
-                
+                k_ket = pibc_ext.strip().upper()
                 k_kode = str(r[col_kode_var]).strip().upper() if col_kode_var and pd.notna(r[col_kode_var]) else ""
                 k_nama = str(r[col_nama_var]).strip().upper() if col_nama_var and pd.notna(r[col_nama_var]) else ""
                 
                 if k_kode:
                     pg_lookup[(k_ket, k_kode)] = pg_lookup.get((k_ket, k_kode), 0.0) + val_msk
-                    pg_lookup[(k_ket_clean, k_kode)] = pg_lookup.get((k_ket_clean, k_kode), 0.0) + val_msk
                 if k_nama:
                     pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
-                    pg_lookup[(k_ket_clean, k_nama)] = pg_lookup.get((k_ket_clean, k_nama), 0.0) + val_msk
+
+    # Ekstrak Ext_PIBC terlebih dahulu untuk setiap baris MB
+    for idx, row in df_mb.iterrows():
+        gudang = str(row.get('Gudang', ''))
+        teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
+        kp = ekstrak_kode_pibc(teks_gab, gudang)
+        if kp:
+            df_mb.at[idx, 'Ext_PIBC'] = kp.strip().upper()
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
+    # 3. PRE-PROCESSING CELUP GABUNG (WAJIB ADA KATA "CELUP GABUNG" / "GABUNG")
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
-    for k_val, df_sub in grup_kode:
-        kp = None
-        for idx, r in df_sub.iterrows():
-            gudang = str(r.get('Gudang', ''))
-            teks_gab = str(r.get('Keterangan', '')) + " " + str(r.get('Keterangan Lain', ''))
-            kp = ekstrak_kode_pibc(teks_gab, gudang)
-            if kp: break
-            
-        if kp:
-            kp_upper = kp.upper()
-            if kp_upper not in pibc_to_mb: pibc_to_mb[kp_upper] = []
-            if k_val not in pibc_to_mb[kp_upper]: pibc_to_mb[kp_upper].append(k_val)
+    for idx, row in df_mb.iterrows():
+        ket_gabung_cek = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
+        is_teks_gabung = 'celup gabung' in ket_gabung_cek.lower() or 'gabung' in ket_gabung_cek.lower()
+        
+        kp = str(row.get('Ext_PIBC', '')).strip().upper()
+        k_val = row.get('Kode', idx)
+        
+        if is_teks_gabung and kp and kp != '':
+            if kp not in pibc_to_mb: pibc_to_mb[kp] = []
+            if k_val not in pibc_to_mb[kp]: pibc_to_mb[kp].append(k_val)
 
-            for idx, r in df_sub.iterrows():
-                k_item = str(r.get('Kode Item', '')).strip().upper()
-                gudang = str(r.get('Gudang', ''))
-                if not is_item_benang(k_item, gudang) and k_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in k_item:
-                    val_bb = bersihkan_angka_indo(r.get('Qty BB Standar (GR)'))
-                    gabungan_qty_item[(kp_upper, k_item)] = gabungan_qty_item.get((kp_upper, k_item), 0.0) + val_bb
+            kode_item = str(row.get('Kode Item', '')).strip().upper()
+            gudang = str(row.get('Gudang', ''))
+            if not is_item_benang(kode_item, gudang) and kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item:
+                val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                key_item = (kp, kode_item)
+                gabungan_qty_item[key_item] = gabungan_qty_item.get(key_item, 0.0) + val_bb
 
+    pibc_celup_gabung = {pibc for pibc, mbs in pibc_to_mb.items() if len(set(mbs)) > 1}
+
+    # 4. PROSES UTAMA CROSSCHECK MB
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
         kode_pibc_grup = None
@@ -249,11 +255,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         rincian_benang_str = ", ".join(rincian_benang_list)
         is_celup_gabung = False
         pasangan_str = ""
-        if kode_pibc_grup:
-            semua_mb = pibc_to_mb.get(kode_pibc_grup.upper(), [])
-            if len(semua_mb) > 1:
-                is_celup_gabung = True
-                pasangan_str = ", ".join([str(m) for m in semua_mb if m != k_val])
+        if kode_pibc_grup and kode_pibc_grup.upper() in pibc_celup_gabung:
+            is_celup_gabung = True
+            semua_mb_terkait = pibc_to_mb.get(kode_pibc_grup.upper(), [])
+            pasangan_str = ", ".join([str(m) for m in set(semua_mb_terkait) if m != k_val])
 
         info_cg_base = f"Celup Gabung dgn: {pasangan_str}" if is_celup_gabung else ""
         is_first_row = True
@@ -267,6 +272,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             gudang = str(row.get('Gudang', ''))
             g_norm = normalisasi_gudang(gudang)
             benang_flag = is_item_benang(kode_item, gudang)
+            kp_baris = str(row.get('Ext_PIBC', '')).strip().upper()
 
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
@@ -277,7 +283,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
             df_mb.at[idx, 'Selisih PG (GR)'] = ''
             df_mb.at[idx, 'Status PIBC'] = ''
-            df_mb.at[idx, 'Ext_PIBC'] = ''
             df_mb.at[idx, 'Info Celup Gabung'] = ''
 
             if is_diabaikan:
@@ -294,7 +299,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             if is_first_row:
                 df_mb.at[idx, 'Status PIBC'] = 'KODE PIBC ADA' if grup_punya_pibc else 'KODE PIBC TIDAK ADA'
-            df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
             df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('Dyeing STI' in g_norm and not kode_item.startswith('TBB')) else ('' if 'Dyeing STI' in g_norm else rincian_benang_str)
 
@@ -313,35 +317,24 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     benang_status_rendered = True
             else:
                 qty_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                qty_bb_cek = gabungan_qty_item.get((kode_pibc_grup.upper(), kode_item.upper()), qty_bb) if (is_celup_gabung and kode_pibc_grup) else qty_bb
-                if is_celup_gabung and kode_pibc_grup: df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                qty_bb_cek = gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb) if (kp_baris in pibc_celup_gabung) else qty_bb
+                if kp_baris in pibc_celup_gabung: df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
 
-                if kode_pibc_grup:
+                if kp_baris:
                     qty_pibc = None
                     qty_pg = None
                     
-                    pibc_key_candidates = [
-                        (kode_pibc_grup.upper(), kode_item.upper()),
-                        (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
-                        (kode_pibc_grup.upper(), nama_item.upper()),
-                        (kode_pibc_grup.upper().replace('PIBC-', ''), nama_item.upper())
-                    ]
-                    for k in pibc_key_candidates:
-                        if k in pibc_lookup:
-                            qty_pibc = pibc_lookup[k]
-                            break
-                            
-                    # Pencarian PG Alternatif Langsung Tembak Kunci (PIBC & Item)
-                    pg_key_candidates = [
-                        (kode_pibc_grup.upper(), kode_item.upper()),
-                        (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
-                        (kode_pibc_grup.upper(), nama_item.upper()),
-                        (kode_pibc_grup.upper().replace('PIBC-', ''), nama_item.upper())
-                    ]
-                    for k in pg_key_candidates:
-                        if k in pg_lookup:
-                            qty_pg = pg_lookup[k]
-                            break
+                    pibc_key = (kp_baris, kode_item.upper())
+                    pibc_key_name = (kp_baris, nama_item.upper())
+                    
+                    if pibc_key in pibc_lookup: qty_pibc = pibc_lookup[pibc_key]
+                    elif pibc_key_name in pibc_lookup: qty_pibc = pibc_lookup[pibc_key_name]
+
+                    pg_key = (kp_baris, kode_item.upper())
+                    pg_key_name = (kp_baris, nama_item.upper())
+
+                    if pg_key in pg_lookup: qty_pg = pg_lookup[pg_key]
+                    elif pg_key_name in pg_lookup: qty_pg = pg_lookup[pg_key_name]
 
                     sel_pibc = None
                     sel_pg = None
