@@ -53,15 +53,12 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_bb_qty) + 1 if col_bb_qty in df_mb.columns else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    # Tambahkan kolom penampung di sebelah kanan
-    df_mb['Crosscheck Qty'] = ''
-    df_mb['Qty PIBC'] = ''
-    df_mb['Qty PG'] = ''
-    df_mb['Selisih (GR)'] = ''
-    df_mb['Status Cek'] = ''
+    # Tambahkan kolom penampung dengan tipe object agar fleksibel diisi string/angka
+    for col_baru in ['Crosscheck Qty', 'Qty PIBC', 'Qty PG', 'Selisih (GR)', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant']:
+        df_mb[col_baru] = ''
+        df_mb[col_baru] = df_mb[col_baru].astype(object)
+
     df_mb['Status PIBC'] = 'KODE PIBC ADA'
-    df_mb['Rincian Benang'] = ''
-    df_mb['Cek Variant'] = ''
 
     return df_mb
 
@@ -90,6 +87,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         "Total (Details + Works)", "Overhead Cost", "TOTAL HARGA", "Labor"
     ]
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
+
+    # Pastikan tipe data kolom angka aman diubah
+    df_mb['Qty PIBC'] = df_mb['Qty PIBC'].astype(object)
+    df_mb['Qty PG'] = df_mb['Qty PG'].astype(object)
+    df_mb['Selisih (GR)'] = df_mb['Selisih (GR)'].astype(object)
+    df_mb['Crosscheck Qty'] = df_mb['Crosscheck Qty'].astype(object)
 
     # Buat dict pencocokan PIBC & PG
     pibc_lookup = {}
@@ -254,32 +257,4 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
 
 
 def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if df_pibc is not None and not df_pibc.empty:
-            col_dyelot = cari_kolom(df_pibc, ['dyelot', 'pibc'])
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).str.strip().unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            if col_dyelot:
-                df_tidak_ada = df_pibc[~df_pibc[col_dyelot].astype(str).str.strip().isin(pibc_di_mb)]
-                df_tidak_ada.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-            else:
-                df_pibc.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-        else:
-            pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
-    return output.getvalue()
-
-
-def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if df_pg is not None and not df_pg.empty:
-            col_ket = cari_kolom(df_pg, ['keterangan', 'det', 'pibc'])
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).str.strip().unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            if col_ket:
-                df_tidak_ada = df_pg[~df_pg[col_ket].astype(str).str.strip().isin(pibc_di_mb)]
-                df_tidak_ada.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-            else:
-                df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-        else:
-            pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
-    return output.getvalue()
+    output = io.Bytes
