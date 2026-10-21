@@ -165,7 +165,7 @@ def ekstrak_kode_pibc(teks, gudang=""):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # LOOKUP MASTER PIBC (Double Matching)
+    # LOOKUP MASTER PIBC
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['dyelot', 'pibc'])
@@ -190,7 +190,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
-    # LOOKUP MASTER PG (Double Matching)
+    # LOOKUP MASTER PG (Disempurnakan dengan variasi penghapusan 'PIBC-')
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         col_ket = cari_kolom_akurat(df_pg, ['keterangan', 'det', 'pibc'])
@@ -207,17 +207,19 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     k_kode = str(r[col_kode_var]).strip().upper()
                     if k_kode:
                         pg_lookup[(k_ket, k_kode)] = pg_lookup.get((k_ket, k_kode), 0.0) + val_msk
+                        # Menangani penulisan Keterangan tanpa prefix 'PIBC-'
+                        pg_lookup[(k_ket.replace('PIBC-', ''), k_kode)] = pg_lookup.get((k_ket.replace('PIBC-', ''), k_kode), 0.0) + val_msk
                         
                 if col_nama_var and pd.notna(r[col_nama_var]):
                     k_nama = str(r[col_nama_var]).strip().upper()
                     if k_nama:
                         pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
+                        # Menangani penulisan Keterangan tanpa prefix 'PIBC-'
+                        pg_lookup[(k_ket.replace('PIBC-', ''), k_nama)] = pg_lookup.get((k_ket.replace('PIBC-', ''), k_nama), 0.0) + val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # =========================================================================
     # PRE-PROCESSING: DETEKSI DAN AKUMULASI OTOMATIS CASE "CELUP GABUNG"
-    # =========================================================================
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -244,7 +246,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     val_bb = bersihkan_angka_indo(r.get('Qty BB Standar (GR)'))
                     key_item = (kp_upper, k_item)
                     gabungan_qty_item[key_item] = gabungan_qty_item.get(key_item, 0.0) + val_bb
-    # =========================================================================
 
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
@@ -253,7 +254,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         total_bb_benang_grup = 0.0
         ada_item_non_tbb_sti = False
         
-        # 1. Scan Awal Kelompok
         rincian_benang_list = []
         
         for idx in df_sub.index:
@@ -289,7 +289,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
         rincian_benang_str = ", ".join(rincian_benang_list)
 
-        # 2. Penentuan Status Celup Gabung untuk Kelompok Ini
         is_celup_gabung = False
         pasangan_str = ""
         if kode_pibc_grup:
@@ -413,10 +412,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             qty_pibc = pibc_lookup[k]
                             break
                             
-                    # 2. Tarik Data PG
+                    # 2. Tarik Data PG (Dengan variasi prefix remover)
                     pg_key_candidates = [
                         (kode_pibc_grup.upper(), kode_item.upper()),
-                        (kode_pibc_grup.upper(), nama_item.upper())
+                        (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
+                        (kode_pibc_grup.upper(), nama_item.upper()),
+                        (kode_pibc_grup.upper().replace('PIBC-', ''), nama_item.upper())
                     ]
                     for k in pg_key_candidates:
                         if k[1] and k in pg_lookup:
@@ -454,7 +455,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         else:
                             df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT KEDUANYA'
 
-            # PENGECEKAN VARIANT DI BARIS PERTAMA
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
                 if 'MESIN DYEING' in gudang:
