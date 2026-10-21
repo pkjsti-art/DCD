@@ -9,8 +9,20 @@ BARIS_DIABAIKAN = [
     "Kode Pekerjaan", "Nama Pekerjaan"
 ]
 
+def normalisasi_gudang(nama_gudang):
+    """Menyamakan semua variasi penulisan gudang tanpa peduli besar/kecil huruf"""
+    g = str(nama_gudang).strip().lower()
+    if 'lab' in g or 'rnd' in g:
+        return 'Gudang Lab & RnD'
+    if 'mesin dyeing' in g or ('dyeing' in g and 'sti' not in g):
+        return 'Gudang Mesin Dyeing'
+    if 'dyeing sti' in g or 'sti' in g:
+        return 'Gudang Dyeing STI'
+    if 'softcone' in g:
+        return 'Gudang Softcone'
+    return str(nama_gudang).strip().title()
+
 def perbaiki_header_pg(df):
-    """Fungsi khusus memotong baris sampah di Master PG agar Header naik ke atas"""
     if df.empty: return df
     for i in range(min(15, len(df))):
         baris = [str(x).strip().upper() for x in df.iloc[i].values]
@@ -20,7 +32,6 @@ def perbaiki_header_pg(df):
     return df
 
 def perbaiki_header_pibc(df):
-    """Fungsi khusus memotong baris sampah di Master PIBC"""
     if df.empty: return df
     for i in range(min(15, len(df))):
         baris_str = " ".join([str(x).upper() for x in df.iloc[i].values])
@@ -46,26 +57,35 @@ def bersihkan_angka_indo(val):
 
 def is_item_benang(kode_item, gudang=""):
     k_upper = str(kode_item).strip().upper()
-    g_upper = str(gudang).strip().upper()
+    g_norm = normalisasi_gudang(gudang)
     if k_upper.startswith(('TWP', 'MWP', 'TBM', 'MBB')): return True
-    if 'MESIN DYEING' in g_upper or 'LAB' in g_upper or 'RND' in g_upper: return False
+    if 'Mesin Dyeing' in g_norm or 'Lab & RnD' in g_norm or 'STI' in g_norm: return False
     if k_upper.startswith('TBB'): return True
     return False
 
 def ekstrak_kode_pibc(teks, gudang=""):
     if pd.isna(teks): return None
     teks_str = str(teks)
-    if 'DYEING' in str(gudang).upper() and ('REPROCES' in teks_str.upper() or 'TO' in teks_str.upper()):
-        match_kurung = re.search(r'\((PIBC-[A-Za-z0-9#\-\.]+)\)', teks_str, re.IGNORECASE)
-        if match_kurung: return match_kurung.group(1).strip().rstrip('.')
-        match_to = re.search(r'TO\s+([A-Za-z0-9\-\#]+)', teks_str, re.IGNORECASE)
-        if match_to: return match_to.group(1).strip().rstrip('.')
+    g_norm = normalisasi_gudang(gudang)
+    if 'Mesin Dyeing' in g_norm or 'STI' in g_norm:
+        if 'REPROCES' in teks_str.upper() or 'TO' in teks_str.upper():
+            match_kurung = re.search(r'\((PIBC-[A-Za-z0-9#\-\.]+)\)', teks_str, re.IGNORECASE)
+            if match_kurung: return match_kurung.group(1).strip().rstrip('.')
+            match_to = re.search(r'TO\s+([A-Za-z0-9\-\#]+)', teks_str, re.IGNORECASE)
+            if match_to: return match_to.group(1).strip().rstrip('.')
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
     hasil = re.search(pola, teks_str, re.IGNORECASE)
     if hasil: return hasil.group(1).strip().rstrip('.')
     return None
 
 def siapkan_kolom_standar(df_mb):
+    # Mengamankan kolom Gudang agar tidak error huruf besar/kecil
+    col_gudang_mb = cari_kolom_akurat(df_mb, ['gudang'])
+    if col_gudang_mb and col_gudang_mb != 'Gudang':
+        df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
+    elif not col_gudang_mb:
+        df_mb['Gudang'] = ''
+
     col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
     col_target_unit = cari_kolom_akurat(df_mb, ['target unit', 'target_unit'])
     col_qty = cari_kolom_akurat(df_mb, ['qty', 'quantity'])
@@ -77,9 +97,11 @@ def siapkan_kolom_standar(df_mb):
 
     for idx, r in df_mb.iterrows():
         kode_item = str(r[col_kode_item]).strip() if col_kode_item and pd.notna(r[col_kode_item]) else ''
-        gudang = str(r.get('Gudang', '')).strip().upper()
+        gudang = str(r.get('Gudang', ''))
+        g_norm = normalisasi_gudang(gudang)
         is_benang = is_item_benang(kode_item, gudang)
-        is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('SOFTCONE' in gudang and not is_benang))
+        
+        is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not is_benang))
 
         if not is_diabaikan:
             if col_target_qty and pd.notna(r[col_target_qty]) and str(r[col_target_qty]).strip().lower() != 'nan':
@@ -134,13 +156,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         pibc_lookup[(k_dyelot.replace('PIBC-', ''), k_nama)] = pibc_lookup.get((k_dyelot.replace('PIBC-', ''), k_nama), 0.0) + val_act
 
     # -------------------------------------------------------------
-    # 2. SETUP LOOKUP MASTER PG (STRICT KONSEP GUDANG & KETERANGAN DET)
+    # 2. SETUP LOOKUP MASTER PG (STRICT KONSEP GUDANG + KET DET)
     # -------------------------------------------------------------
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         df_pg = perbaiki_header_pg(df_pg.copy()) 
         
-        # Cari kolom secara eksplisit sesuai aturan
         col_gudang = cari_kolom_akurat(df_pg, ['GUDANG'])
         col_masuk = cari_kolom_akurat(df_pg, ['MASUK'])
         col_ket_det = cari_kolom_akurat(df_pg, ['KETERANGAN DET', 'KETERANGAN_DET'])
@@ -150,18 +171,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         if col_gudang and col_ket_det and col_masuk:
             for _, r in df_pg.iterrows():
                 val_msk = bersihkan_angka_indo(r[col_masuk])
-                if val_msk <= 0: continue # Aturan: MASUK tidak boleh 0
+                if val_msk <= 0: continue # Mutlak: Masuk harus lebih dari 0
                 
-                gudang_pg = str(r[col_gudang]).strip().upper()
+                # Normalisasi nama gudang agar aman dari besar/kecil huruf
+                gudang_pg = normalisasi_gudang(r[col_gudang])
                 
-                # Identifikasi Kategori Gudang di PG
-                kat_gudang_pg = ""
-                if "LAB" in gudang_pg or "RND" in gudang_pg: kat_gudang_pg = "LAB"
-                elif "MESIN DYEING" in gudang_pg: kat_gudang_pg = "MESIN DYEING"
+                # Hanya simpan ke memori jika gudangnya adalah Lab/RnD atau Mesin Dyeing
+                if gudang_pg not in ['Gudang Lab & RnD', 'Gudang Mesin Dyeing']: 
+                    continue
                 
-                if not kat_gudang_pg: continue # Skip jika bukan gudang yang kita proses
-                
-                # Ekstrak PIBC mutlak dari KETERANGAN DET.
+                # Ekstrak PIBC mutlak HANYA dari kolom KETERANGAN DET.
                 raw_pibc = str(r[col_ket_det])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
@@ -172,18 +191,17 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_kode = str(r[col_kode_var]).strip().upper() if col_kode_var and pd.notna(r[col_kode_var]) else ""
                 k_nama = str(r[col_nama_var]).strip().upper() if col_nama_var and pd.notna(r[col_nama_var]) else ""
                 
-                # Simpan lookup dengan format tuple 3-kunci: (Kategori Gudang, PIBC, Item)
                 if k_kode:
-                    pg_lookup[(kat_gudang_pg, k_ket, k_kode)] = pg_lookup.get((kat_gudang_pg, k_ket, k_kode), 0.0) + val_msk
-                    pg_lookup[(kat_gudang_pg, k_ket_clean, k_kode)] = pg_lookup.get((kat_gudang_pg, k_ket_clean, k_kode), 0.0) + val_msk
+                    pg_lookup[(gudang_pg, k_ket, k_kode)] = pg_lookup.get((gudang_pg, k_ket, k_kode), 0.0) + val_msk
+                    pg_lookup[(gudang_pg, k_ket_clean, k_kode)] = pg_lookup.get((gudang_pg, k_ket_clean, k_kode), 0.0) + val_msk
                 if k_nama:
-                    pg_lookup[(kat_gudang_pg, k_ket, k_nama)] = pg_lookup.get((kat_gudang_pg, k_ket, k_nama), 0.0) + val_msk
-                    pg_lookup[(kat_gudang_pg, k_ket_clean, k_nama)] = pg_lookup.get((kat_gudang_pg, k_ket_clean, k_nama), 0.0) + val_msk
+                    pg_lookup[(gudang_pg, k_ket, k_nama)] = pg_lookup.get((gudang_pg, k_ket, k_nama), 0.0) + val_msk
+                    pg_lookup[(gudang_pg, k_ket_clean, k_nama)] = pg_lookup.get((gudang_pg, k_ket_clean, k_nama), 0.0) + val_msk
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
     # -------------------------------------------------------------
-    # PRE-PROCESSING: DETEKSI CELUP GABUNG OTOMATIS
+    # PRE-PROCESSING: DETEKSI CELUP GABUNG
     # -------------------------------------------------------------
     pibc_to_mb = {}
     gabungan_qty_item = {}
@@ -191,7 +209,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     for k_val, df_sub in grup_kode:
         kp = None
         for idx, r in df_sub.iterrows():
-            gudang = str(r.get('Gudang', '')).strip().upper()
+            gudang = str(r.get('Gudang', ''))
             teks_gab = str(r.get('Keterangan', '')) + " " + str(r.get('Keterangan Lain', ''))
             kp = ekstrak_kode_pibc(teks_gab, gudang)
             if kp: break
@@ -203,7 +221,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             for idx, r in df_sub.iterrows():
                 k_item = str(r.get('Kode Item', '')).strip().upper()
-                gudang = str(r.get('Gudang', '')).strip().upper()
+                gudang = str(r.get('Gudang', ''))
                 if not is_item_benang(k_item, gudang) and k_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in k_item:
                     val_bb = bersihkan_angka_indo(r.get('Qty BB Standar (GR)'))
                     gabungan_qty_item[(kp_upper, k_item)] = gabungan_qty_item.get((kp_upper, k_item), 0.0) + val_bb
@@ -219,23 +237,21 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         ada_item_non_tbb_sti = False
         rincian_benang_list = []
         
-        # Identifikasi Kategori Gudang dominan di kelompok MB ini
-        gudang_group = ""
+        # Identifikasi Kategori Gudang di kelompok MB ini secara Tepat
+        gudang_group_asli = ""
         for i in df_sub.index:
-            g = str(df_mb.loc[i].get('Gudang', '')).strip().upper()
+            g = str(df_mb.loc[i].get('Gudang', '')).strip()
             if g != "":
-                gudang_group = g
+                gudang_group_asli = g
                 break
                 
-        kat_gudang_mb = ""
-        if "LAB" in gudang_group or "RND" in gudang_group: kat_gudang_mb = "LAB"
-        elif "MESIN DYEING" in gudang_group: kat_gudang_mb = "MESIN DYEING"
+        kat_gudang_mb = normalisasi_gudang(gudang_group_asli)
         
-        # 1. Scan Awal Kelompok
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
-            gudang = str(row.get('Gudang', '')).strip().upper()
+            gudang = str(row.get('Gudang', ''))
+            g_norm = normalisasi_gudang(gudang)
             teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
             
             if not kode_pibc_grup:
@@ -253,7 +269,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if isinstance(val_bb, (int, float)): total_bb_benang_grup += float(val_bb)
                 if kode_item not in rincian_benang_list: rincian_benang_list.append(kode_item)
 
-            if 'DYEING STI' in gudang:
+            if 'Dyeing STI' in g_norm:
                 if not (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper()) and kode_item and not kode_item.startswith('TBB'):
                     ada_item_non_tbb_sti = True
 
@@ -275,10 +291,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
             nama_item = str(row.get('Nama Item', '')).strip()
-            gudang = str(row.get('Gudang', '')).strip().upper()
+            gudang = str(row.get('Gudang', ''))
+            g_norm = normalisasi_gudang(gudang)
             benang_flag = is_item_benang(kode_item, gudang)
 
-            is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('SOFTCONE' in gudang and not benang_flag))
+            is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
             df_mb.at[idx, 'Crosscheck Qty'] = ''
             df_mb.at[idx, 'Qty PIBC'] = ''
@@ -293,10 +310,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             if is_diabaikan:
                 df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
-                df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'DYEING STI' not in gudang else ''
+                df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'Dyeing STI' not in g_norm else ''
                 continue
 
-            if 'DYEING STI' in gudang and not ada_item_non_tbb_sti:
+            if 'Dyeing STI' in g_norm and not ada_item_non_tbb_sti:
                 df_mb.at[idx, 'Rincian Benang'] = ''
                 df_mb.at[idx, 'Cek Variant'] = ''
                 is_first_row = False
@@ -306,13 +323,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 df_mb.at[idx, 'Status PIBC'] = 'KODE PIBC ADA' if grup_punya_pibc else 'KODE PIBC TIDAK ADA'
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
-            df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('DYEING STI' in gudang and not kode_item.startswith('TBB')) else ('' if 'DYEING STI' in gudang else rincian_benang_str)
+            df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('Dyeing STI' in g_norm and not kode_item.startswith('TBB')) else ('' if 'Dyeing STI' in g_norm else rincian_benang_str)
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
 
-            # A. PENGECEKAN BENANG
             if benang_flag:
                 qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 df_mb.at[idx, 'Selisih Benang (GR)'] = qty_bb_baris - target_gr_utama_grup
@@ -320,10 +336,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if not benang_status_rendered:
                     selisih_total = total_bb_benang_grup - target_gr_utama_grup
                     if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
-                    else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('LAB' in gudang or 'RND' in gudang) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
+                    else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     benang_status_rendered = True
-
-            # B. PENGECEKAN OBAT (TRANSPARANSI TOTAL & STRICT MATCHING)
             else:
                 qty_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 qty_bb_cek = gabungan_qty_item.get((kode_pibc_grup.upper(), kode_item.upper()), qty_bb) if (is_celup_gabung and kode_pibc_grup) else qty_bb
@@ -333,7 +347,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     qty_pibc = None
                     qty_pg = None
                     
-                    # Cek PIBC
                     pibc_key_candidates = [
                         (kode_pibc_grup.upper(), kode_item.upper()),
                         (kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
@@ -345,8 +358,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             qty_pibc = pibc_lookup[k]
                             break
                             
-                    # Cek PG (Sesuai Konsep: Sertakan Identitas Gudang-nya)
-                    if kat_gudang_mb: 
+                    # Pencocokan Tembakan PG yang presisi dan di-filter sesuai gudang!
+                    if kat_gudang_mb in ['Gudang Lab & RnD', 'Gudang Mesin Dyeing']: 
                         pg_key_candidates = [
                             (kat_gudang_mb, kode_pibc_grup.upper(), kode_item.upper()),
                             (kat_gudang_mb, kode_pibc_grup.upper().replace('PIBC-', ''), kode_item.upper()),
@@ -354,7 +367,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             (kat_gudang_mb, kode_pibc_grup.upper().replace('PIBC-', ''), nama_item.upper())
                         ]
                         for k in pg_key_candidates:
-                            if k[2] and k in pg_lookup:
+                            if k in pg_lookup:
                                 qty_pg = pg_lookup[k]
                                 break
 
@@ -371,7 +384,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         sel_pg = qty_bb_cek - qty_pg
                         df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
-                    # PENENTUAN STATUS
                     status_pibc = "TIDAK ADA" if qty_pibc is None else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
                     status_pg = "TIDAK ADA" if qty_pg is None else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
 
@@ -389,18 +401,17 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
-                if 'MESIN DYEING' in gudang:
+                if 'Mesin Dyeing' in g_norm:
                     df_mb.at[idx, 'Cek Variant'] = kode_bj if not kode_item.startswith(('TWP.050', 'TWP.100', 'TWP.051')) and kode_bj not in ['TWP.100', 'TWP.400', 'TWP.051', 'TWP.666', 'TWP.901'] else 'CLEAN'
-                elif 'LAB' in gudang:
+                elif 'Lab & RnD' in g_norm:
                     df_mb.at[idx, 'Cek Variant'] = kode_bj if not kode_item.startswith(('TWP.050', 'TWP.051', 'TWP.999', 'TWP.100')) and kode_bj not in ['TWP.999', 'TWP.100', 'TWP.400', 'TWP.666', 'TWP.051'] else 'CLEAN'
 
             is_first_row = False
 
-        # STATUS CEK
         idx_first = df_sub.index[0]
-        is_softcone_group = 'SOFTCONE' in gudang_group or (gudang_group == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
+        is_softcone_group = 'Softcone' in kat_gudang_mb or (kat_gudang_mb == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
-        if ('DYEING STI' in gudang_group and not ada_item_non_tbb_sti) or is_softcone_group:
+        if ('Dyeing STI' in kat_gudang_mb and not ada_item_non_tbb_sti) or is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = '' 
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
