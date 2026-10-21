@@ -88,13 +88,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     ]
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # Pastikan tipe data kolom angka aman diubah
     df_mb['Qty PIBC'] = df_mb['Qty PIBC'].astype(object)
     df_mb['Qty PG'] = df_mb['Qty PG'].astype(object)
     df_mb['Selisih (GR)'] = df_mb['Selisih (GR)'].astype(object)
     df_mb['Crosscheck Qty'] = df_mb['Crosscheck Qty'].astype(object)
 
-    # Buat dict pencocokan PIBC & PG
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom(df_pibc, ['dyelot', 'pibc'])
@@ -121,7 +119,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 except:
                     pg_lookup[key] = 0.0
 
-    # Kelompokkan berdasarkan 'Kode' MB
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
     for k_val, df_sub in grup_kode:
@@ -132,7 +129,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
             
-            # Jika baris total/overhead -> KOSONGKAN
             if kode_item in baris_diabaikan:
                 df_mb.at[idx, 'Crosscheck Qty'] = ''
                 df_mb.at[idx, 'Qty PIBC'] = ''
@@ -153,7 +149,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
             
-            # 1. Logika Benang
             if 'PRODUKSI SOFTCONE' in gudang or kode_item.startswith(('TWP', 'MWP', 'TBM', 'MBB')):
                 qty_target = row.get('Qty Target Standar (GR)', 0.0)
                 qty_bb = row.get('Qty BB Standar (GR)', 0.0)
@@ -172,7 +167,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if kode_item != 'TBB':
                     df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
 
-            # 2. Logika Chemical & Dyestuff
             elif 'DYEING' in gudang or 'LAB' in gudang:
                 qty_bb = row.get('Qty BB Standar (GR)', 0.0)
                 matched = False
@@ -210,7 +204,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                     status_cek_list.append(f"Kelebihan [{kode_item}]")
 
-            # 3. Logika Cek Variant (HANYA BARIS PERTAMA)
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
                 if 'MESIN DYEING' in gudang:
@@ -226,7 +219,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_first_row = False
 
-        # Status Cek hanya untuk baris pertama kelompok Kode MB
         idx_first = df_sub.index[0]
         if status_cek_list:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list)))
@@ -257,4 +249,32 @@ def buat_excel_incorrect_multi_sheet(df_hasil):
 
 
 def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
-    output = io.Bytes
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        if df_pibc is not None and not df_pibc.empty:
+            col_dyelot = cari_kolom(df_pibc, ['dyelot', 'pibc'])
+            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).str.strip().unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
+            if col_dyelot:
+                df_tidak_ada = df_pibc[~df_pibc[col_dyelot].astype(str).str.strip().isin(pibc_di_mb)]
+                df_tidak_ada.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
+            else:
+                df_pibc.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
+        else:
+            pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
+    return output.getvalue()
+
+
+def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        if df_pg is not None and not df_pg.empty:
+            col_ket = cari_kolom(df_pg, ['keterangan', 'det', 'pibc'])
+            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).str.strip().unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
+            if col_ket:
+                df_tidak_ada = df_pg[~df_pg[col_ket].astype(str).str.strip().isin(pibc_di_mb)]
+                df_tidak_ada.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
+            else:
+                df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
+        else:
+            pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
+    return output.getvalue()
