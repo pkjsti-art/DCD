@@ -2,6 +2,16 @@ import pandas as pd
 import re
 import io
 
+# Daftar prefix item benang resmi yang valid
+PREFIX_BENANG_VALID = ('TBB', 'MBB', 'TBM', 'TWP', 'MWP')
+
+# Daftar baris total/overhead/pekerjaan yang wajib dihiraukan
+BARIS_DIABAIKAN = [
+    "Total Material (Details)", "Total Pekerjaan (Works)", 
+    "Total (Details + Works)", "Overhead Cost", "TOTAL HARGA", "Labor",
+    "Kode Pekerjaan", "Nama Pekerjaan"
+]
+
 def cari_kolom_akurat(df, daftar_kemungkinan):
     for col in df.columns:
         col_clean = str(col).strip().lower()
@@ -29,6 +39,7 @@ def siapkan_kolom_standar(df_mb):
     col_target_unit = None
     col_qty = None
     col_unit = None
+    col_kode_item = None
 
     for col in df_mb.columns:
         c_lower = str(col).strip().lower()
@@ -40,6 +51,8 @@ def siapkan_kolom_standar(df_mb):
             col_qty = col
         elif c_lower in ['unit', 'satuan'] and 'target' not in c_lower:
             col_unit = col
+        elif 'kode item' in c_lower or c_lower == 'kode_item':
+            col_kode_item = col
 
     if not col_target_qty:
         col_target_qty = cari_kolom_akurat(df_mb, ['target qty', 'target_qty'])
@@ -49,22 +62,39 @@ def siapkan_kolom_standar(df_mb):
         col_qty = cari_kolom_akurat(df_mb, ['qty'])
     if not col_unit:
         col_unit = cari_kolom_akurat(df_mb, ['unit', 'satuan'])
+    if not col_kode_item:
+        col_kode_item = cari_kolom_akurat(df_mb, ['kode item', 'kode_item'])
 
-    # 1. Hitung Qty Target Standar (GR)
-    seri_target_gr = pd.Series([0.0] * len(df_mb))
-    if col_target_qty:
-        for idx, r in df_mb.iterrows():
-            val = bersihkan_angka_indo(r[col_target_qty])
-            unit = str(r[col_target_unit]).strip().upper() if col_target_unit in df_mb.columns and pd.notna(r[col_target_unit]) else 'GR'
-            seri_target_gr[idx] = val if unit == 'GR' else val * 1000.0
+    seri_target_gr = pd.Series([''] * len(df_mb), dtype=object)
+    seri_bb_gr = pd.Series([''] * len(df_mb), dtype=object)
 
-    # 2. Hitung Qty BB Standar (GR)
-    seri_bb_gr = pd.Series([0.0] * len(df_mb))
-    if col_qty:
-        for idx, r in df_mb.iterrows():
-            val = bersihkan_angka_indo(r[col_qty])
-            unit = str(r[col_unit]).strip().upper() if col_unit in df_mb.columns and pd.notna(r[col_unit]) else 'GR'
-            seri_bb_gr[idx] = val if unit == 'GR' else val * 1000.0
+    for idx, r in df_mb.iterrows():
+        kode_item = str(r[col_kode_item]).strip() if col_kode_item and pd.notna(r[col_kode_item]) else ''
+        gudang = str(r.get('Gudang', '')).strip().upper()
+        
+        # Cek apakah baris harus diabaikan (misal T.AV, Pekerjaan, Total Overhead)
+        is_diabaikan = (
+            kode_item in BARIS_DIABAIKAN or
+            'PEKERJAAN' in kode_item.upper() or
+            ('SOFTCONE' in gudang and not kode_item.startswith(PREFIX_BENANG_VALID))
+        )
+
+        if not is_diabaikan:
+            # 1. Qty Target Standar (GR)
+            if col_target_qty:
+                val_raw = r[col_target_qty]
+                if pd.notna(val_raw) and str(val_raw).strip() != '' and str(val_raw).strip().lower() != 'nan':
+                    val = bersihkan_angka_indo(val_raw)
+                    unit = str(r[col_target_unit]).strip().upper() if col_target_unit in df_mb.columns and pd.notna(r[col_target_unit]) else 'GR'
+                    seri_target_gr[idx] = val if unit == 'GR' else val * 1000.0
+
+            # 2. Qty BB Standar (GR)
+            if col_qty:
+                val_raw = r[col_qty]
+                if pd.notna(val_raw) and str(val_raw).strip() != '' and str(val_raw).strip().lower() != 'nan':
+                    val = bersihkan_angka_indo(val_raw)
+                    unit = str(r[col_unit]).strip().upper() if col_unit in df_mb.columns and pd.notna(r[col_unit]) else 'GR'
+                    seri_bb_gr[idx] = val if unit == 'GR' else val * 1000.0
 
     if col_target_unit in df_mb.columns:
         idx_target = list(df_mb.columns).index(col_target_unit) + 1
@@ -108,10 +138,6 @@ def ekstrak_kode_pibc(teks, gudang=""):
 
 
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
-    baris_diabaikan = [
-        "Total Material (Details)", "Total Pekerjaan (Works)", 
-        "Total (Details + Works)", "Overhead Cost", "TOTAL HARGA", "Labor"
-    ]
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
     pibc_lookup = {}
@@ -144,18 +170,25 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
         kode_pibc_grup = None
+        target_gr_utama_grup = 0.0
         
+        # 1. Cari Target Qty Utama dan Kode PIBC kelompok
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             ket = str(row.get('Keterangan', ''))
             ket_lain = str(row.get('Keterangan Lain', ''))
             gudang = str(row.get('Gudang', '')).strip()
             teks_gab = ket + " " + ket_lain
-            kp = ekstrak_kode_pibc(teks_gab, gudang)
-            if kp:
-                grup_punya_pibc = True
-                kode_pibc_grup = kp
-                break
+            
+            if not kode_pibc_grup:
+                kp = ekstrak_kode_pibc(teks_gab, gudang)
+                if kp:
+                    grup_punya_pibc = True
+                    kode_pibc_grup = kp
+
+            val_target = row.get('Qty Target Standar (GR)')
+            if isinstance(val_target, (int, float)) and val_target > 0 and target_gr_utama_grup == 0.0:
+                target_gr_utama_grup = float(val_target)
 
         status_pibc_grup = 'KODE PIBC ADA' if grup_punya_pibc else 'KODE PIBC TIDAK ADA'
         is_first_row = True
@@ -164,18 +197,27 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
+            gudang = str(row.get('Gudang', '')).strip().upper()
             
             df_mb.at[idx, 'Status PIBC'] = status_pibc_grup
             df_mb.at[idx, 'Ext_PIBC'] = kode_pibc_grup
 
-            if kode_item in baris_diabaikan:
+            # JIKA BARIS DIHIRAUKAN (Total, Pekerjaan, T.AV, dll.) -> KOSONGKAN HINGGA BERSIH
+            is_diabaikan = (
+                kode_item in BARIS_DIABAIKAN or
+                'PEKERJAAN' in kode_item.upper() or
+                ('SOFTCONE' in gudang and not kode_item.startswith(PREFIX_BENANG_VALID))
+            )
+
+            if is_diabaikan:
                 df_mb.at[idx, 'Crosscheck Qty'] = ''
                 df_mb.at[idx, 'Qty PIBC'] = ''
                 df_mb.at[idx, 'Qty PG'] = ''
                 df_mb.at[idx, 'Selisih (GR)'] = ''
+                df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
+                df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
                 continue
                 
-            gudang = str(row.get('Gudang', '')).strip().upper()
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             ket = str(row.get('Keterangan', ''))
             ket_lain = str(row.get('Keterangan Lain', ''))
@@ -183,23 +225,21 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
             
-            # 1. Logika Benang (Hanya hitung jika baris tersebut memiliki Target Qty atau kategori benang)
-            if 'PRODUKSI SOFTCONE' in gudang or kode_item.startswith(('TWP', 'MWP', 'TBM', 'MBB')):
-                qty_target = row.get('Qty Target Standar (GR)', 0.0)
-                qty_bb = row.get('Qty BB Standar (GR)', 0.0)
+            # 2. Logika Benang / Produksi Softcone (Khusus Item Benang Valid)
+            if 'PRODUKSI SOFTCONE' in gudang or kode_item.startswith(PREFIX_BENANG_VALID):
+                val_bb = row.get('Qty BB Standar (GR)')
+                qty_bb = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 
-                # Jika baris bahan baku di bawahnya tidak punya target qty, jangan hitung selisih benang di baris itu
-                if qty_target > 0:
-                    selisih = qty_bb - qty_target
-                    df_mb.at[idx, 'Selisih (GR)'] = selisih
+                selisih = qty_bb - target_gr_utama_grup
+                df_mb.at[idx, 'Selisih (GR)'] = selisih
+                
+                if abs(selisih) <= 0.01:
+                    df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                else:
                     if ada_keyword_selisih:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH'
-                    elif abs(selisih) > 0.01:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
                     else:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
-                else:
-                    df_mb.at[idx, 'Selisih (GR)'] = ''
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
                     
                 df_mb.at[idx, 'Rincian Benang'] = kode_item
 
@@ -207,9 +247,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if kode_item != 'TBB':
                     df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG'
 
-            # 2. Logika Chemical & Dyestuff
+            # 3. Logika Chemical & Dyestuff
             elif 'DYEING' in gudang or 'LAB' in gudang:
-                qty_bb = row.get('Qty BB Standar (GR)', 0.0)
+                val_bb = row.get('Qty BB Standar (GR)')
+                qty_bb = float(val_bb) if isinstance(val_bb, (int, float)) else 0.0
                 matched = False
                 
                 if kode_pibc_grup:
@@ -238,12 +279,13 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             matched = True
 
                 if matched:
-                    if ada_keyword_selisih:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH'
-                    elif abs(selisih) > 0.01:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
-                    else:
+                    if abs(selisih) <= 0.01:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                    else:
+                        if ada_keyword_selisih:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH'
+                        else:
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT'
                 else:
                     df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                     status_cek_list.append(f"Kelebihan [{kode_item}]")
