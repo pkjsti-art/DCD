@@ -9,6 +9,10 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
+    """
+    Sapu bersih seluruh karakter gaib!
+    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan mutlak.
+    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
@@ -20,15 +24,6 @@ def normalisasi_gudang(nama_gudang):
     if 'dyeing sti' in g or 'sti' in g: return 'Gudang Dyeing STI'
     if 'softcone' in g: return 'Gudang Softcone'
     return str(nama_gudang).strip().title()
-
-def perbaiki_header_pg(df):
-    if df.empty: return df
-    for i in range(min(15, len(df))):
-        baris = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
-        if 'MASUK' in baris:
-            df.columns = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
-            return df.iloc[i+1:].reset_index(drop=True)
-    return df
 
 def perbaiki_header_pibc(df):
     if df.empty: return df
@@ -44,7 +39,7 @@ def cari_kolom_akurat(df, daftar_kemungkinan):
         kem_clean = re.sub(r'[^A-Z0-9]', '', kem.upper())
         for col in df.columns:
             col_clean = re.sub(r'[^A-Z0-9]', '', str(col).upper())
-            if kem_clean == col_clean or kem_clean in col_clean: return col
+            if kem_clean in col_clean: return col
     return None
 
 def bersihkan_angka_indo(val):
@@ -144,32 +139,23 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pibc_lookup[(k_dyelot, k_kode)] = pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
 
-    # 2. LOOKUP MASTER PG (DENGAN LOGIKA PEMBERSIHAN MANUAL ANDA)
+    # 2. LOOKUP MASTER PG (Diambil dari DataFrame df_pg yang sudah Matang/Bersih dari cleaner.py)
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
-        df_pg = perbaiki_header_pg(df_pg.copy()) 
-        col_masuk = cari_kolom_akurat(df_pg, ['MASUK'])
-        col_ket_det = cari_kolom_akurat(df_pg, ['KETERANGANDET'])
-        col_kode_var = cari_kolom_akurat(df_pg, ['KODEVARIANT', 'KODEITEM'])
-        col_nama_var = cari_kolom_akurat(df_pg, ['NAMAVARIANT', 'NAMAITEM'])
-        
-        if col_ket_det and col_masuk:
-            # ---> IMPLEMENTASI IDE JENIUS ANDA: SAPU BERSIH DATA NOL DI AWAL <---
-            df_pg['TEMP_MASUK'] = df_pg[col_masuk].apply(bersihkan_angka_indo)
-            df_pg_bersih = df_pg[df_pg['TEMP_MASUK'] > 0].copy() # Buang semua baris yang masuknya 0!
-            
-            for _, r in df_pg_bersih.iterrows():
-                val_msk = r['TEMP_MASUK']
+        if 'PIBC_PG' in df_pg.columns and 'Qty_PG' in df_pg.columns:
+            for _, r in df_pg.iterrows():
+                val_msk = float(r['Qty_PG']) if pd.notna(r['Qty_PG']) else 0.0
+                if val_msk <= 0: continue 
                 
-                raw_pibc = str(r[col_ket_det])
+                raw_pibc = str(r['PIBC_PG'])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
                 pibc_ext = ekstrak_kode_pibc(raw_pibc)
                 if not pibc_ext: continue
                 
                 k_ket = sanitize_key(pibc_ext)
-                k_kode = sanitize_key(r[col_kode_var]) if col_kode_var and pd.notna(r[col_kode_var]) else ""
-                k_nama = sanitize_key(r[col_nama_var]) if col_nama_var and pd.notna(r[col_nama_var]) else ""
+                k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
+                k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
                 
                 if k_kode: pg_lookup[(k_ket, k_kode)] = pg_lookup.get((k_ket, k_kode), 0.0) + val_msk
                 if k_nama: pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
@@ -183,7 +169,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG
+    # 3. PRE-PROCESSING CELUP GABUNG (Wajib ada kata Gabung)
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -411,11 +397,9 @@ def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         if df_pg is not None and not df_pg.empty:
-            df_pg = perbaiki_header_pg(df_pg.copy())
-            col_ket = cari_kolom_akurat(df_pg, ['KETERANGANDET'])
             pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            if col_ket:
-                df_pg[~df_pg[col_ket].astype(str).apply(sanitize_key).isin(pibc_di_mb)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
+            if 'PIBC_PG' in df_pg.columns:
+                df_pg[~df_pg['PIBC_PG'].astype(str).apply(sanitize_key).isin(pibc_di_mb)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
             else: df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
         else: pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
     return output.getvalue()
