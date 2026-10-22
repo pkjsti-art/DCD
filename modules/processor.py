@@ -9,11 +9,12 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
-    """Menghapus seluruh spasi tersembunyi dan menyeragamkan format agar pencocokan 100% akurat"""
+    """
+    Sapu bersih seluruh karakter gaib!
+    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan 100% mutlak.
+    """
     if not k: return ""
-    # Hapus spasi dan seragamkan huruf besar
-    k = re.sub(r'\s+', '', str(k).upper())
-    # Buang 'PIBC-' agar jika di PG hanya ditulis angka, tetap bisa klop
+    k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
 
 def normalisasi_gudang(nama_gudang):
@@ -27,9 +28,9 @@ def normalisasi_gudang(nama_gudang):
 def perbaiki_header_pg(df):
     if df.empty: return df
     for i in range(min(15, len(df))):
-        baris = [str(x).strip().upper() for x in df.iloc[i].values]
+        baris = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
         if 'MASUK' in baris:
-            df.columns = baris
+            df.columns = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
             return df.iloc[i+1:].reset_index(drop=True)
     return df
 
@@ -38,17 +39,16 @@ def perbaiki_header_pibc(df):
     for i in range(min(15, len(df))):
         baris_str = " ".join([str(x).upper() for x in df.iloc[i].values])
         if ('DYELOT' in baris_str or 'PIBC' in baris_str) and ('ACTUAL' in baris_str or 'QTY' in baris_str):
-            df.columns = [str(x).strip().upper() for x in df.iloc[i].values]
+            df.columns = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
             return df.iloc[i+1:].reset_index(drop=True)
     return df
 
 def cari_kolom_akurat(df, daftar_kemungkinan):
     for kem in daftar_kemungkinan:
-        kem_clean = re.sub(r'[^A-Z0-9]', '', kem.upper()) # Ekstrem bersih (hanya huruf & angka)
+        kem_clean = re.sub(r'[^A-Z0-9]', '', kem.upper())
         for col in df.columns:
             col_clean = re.sub(r'[^A-Z0-9]', '', str(col).upper())
-            if kem_clean in col_clean:
-                return col
+            if kem_clean == col_clean or kem_clean in col_clean: return col
     return None
 
 def bersihkan_angka_indo(val):
@@ -69,12 +69,9 @@ def is_item_benang(kode_item, gudang=""):
 def ekstrak_kode_pibc(teks, gudang=""):
     if pd.isna(teks): return None
     teks_str = str(teks)
-    # Ambil format PIBC beserta tanda pagar (#) jika ada
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
     hasil = re.search(pola, teks_str, re.IGNORECASE)
     if hasil: return hasil.group(1).strip().rstrip('.')
-    
-    # Antisipasi jika di PG hanya ditulis angkanya saja beserta pagarnya (contoh: 2610000987#A)
     match_angka = re.search(r'([0-9]{8,}(?:#[A-Za-z0-9]+)?)', teks_str)
     if match_angka: return match_angka.group(1).strip()
     return None
@@ -151,7 +148,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pibc_lookup[(k_dyelot, k_kode)] = pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
 
-    # 2. LOOKUP MASTER PG
+    # 2. LOOKUP MASTER PG (SEKARANG KUNCI SANGAT BERSIH DARI KARAKTER GAIB)
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         df_pg = perbaiki_header_pg(df_pg.copy()) 
