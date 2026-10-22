@@ -50,31 +50,25 @@ def is_item_benang(kode_item, gudang=""):
     return False
 
 # =============================================================================
-# LOGIKA FILTER PLUS & EKSTRAKSI PIBC ISOLASI
+# LOGIKA FILTER PLUS & EKSTRAKSI PIBC ISOLASI KETAT
 # =============================================================================
 def filter_plus(teks):
     """
-    Mengecek tanda + di kalimat. Jika sebelum + ada tanda pemisah (, ; /), 
-    maka + dipertahankan. Jika tidak ada pemisah, jadikan spasi.
+    Melindungi tanda + jika didahului , ; / ATAU berada di paling AWAL teks (^).
+    Selain kondisi itu, + akan diubah jadi spasi pemisah.
     """
     if pd.isna(teks): return ""
     teks = str(teks)
-    hasil = ""
-    for i, char in enumerate(teks):
-        if char == '+':
-            j = i - 1
-            while j >= 0 and teks[j].isspace():
-                j -= 1
-            # Cek karakter valid sebelum +
-            if j >= 0 and teks[j] in [',', ';', '/']:
-                hasil += char
-            else:
-                hasil += ' ' # Berfungsi sebagai pemisah kata, bukan bagian kode
-        else:
-            hasil += char
-    return hasil
+    
+    # regex: ^ (awal kalimat) ATAU [,;/]. Diikuti opsional spasi, lalu +
+    teks = re.sub(r'((?:^|[,;/])\s*)\+', r'\g<1>PLUS_SAH', teks)
+    
+    teks = teks.replace('+', ' ')
+    teks = teks.replace('PLUS_SAH', '+')
+    return teks
 
-POLA_PIBC = r'((?:\b[A-Za-z]{1,3}[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
+# POLA EXTREME: Mengunci HANYA kata 'TU' atau '+' yang boleh jadi Prefix. Mustahil 'HITAM' lolos.
+POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
 
 def is_to_reprocess(teks, gudang):
     g_norm = normalisasi_gudang(gudang)
@@ -229,18 +223,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pg_lookup[(k_ket, k_kode)] = round(pg_lookup.get((k_ket, k_kode), 0.0) + val_msk, 3)
                 if k_nama: pg_lookup[(k_ket, k_nama)] = round(pg_lookup.get((k_ket, k_nama), 0.0) + val_msk, 3)
 
-    # Ekstrak PIBC MB - Logika Isolasi Kolom Diterapkan Di Sini!
+    # Ekstrak PIBC MB - Logika Isolasi Kolom Dipertahankan Penuh
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
         
-        # Ekstrak kolom secara terpisah dan saring tanda +
         ket1 = filter_plus(row.get('Keterangan', ''))
         ket2 = filter_plus(row.get('Keterangan Lain', ''))
         
         pibc_list1 = dapatkan_pibc_baris(ket1, gudang)
         pibc_list2 = dapatkan_pibc_baris(ket2, gudang)
         
-        # Gabungkan dan buang duplikat jika ada yang tumpang tindih
         pibc_list = list(dict.fromkeys(pibc_list1 + pibc_list2))
         
         if pibc_list: 
