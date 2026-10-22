@@ -9,10 +9,6 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
-    """
-    Sapu bersih seluruh karakter gaib!
-    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan mutlak.
-    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
@@ -24,15 +20,6 @@ def normalisasi_gudang(nama_gudang):
     if 'dyeing sti' in g or 'sti' in g: return 'Gudang Dyeing STI'
     if 'softcone' in g: return 'Gudang Softcone'
     return str(nama_gudang).strip().title()
-
-def perbaiki_header_pibc(df):
-    if df.empty: return df
-    for i in range(min(15, len(df))):
-        baris_str = " ".join([str(x).upper() for x in df.iloc[i].values])
-        if ('DYELOT' in baris_str or 'PIBC' in baris_str) and ('ACTUAL' in baris_str or 'QTY' in baris_str):
-            df.columns = [str(x).strip().upper().replace('.', '') for x in df.iloc[i].values]
-            return df.iloc[i+1:].reset_index(drop=True)
-    return df
 
 def cari_kolom_akurat(df, daftar_kemungkinan):
     for kem in daftar_kemungkinan:
@@ -46,7 +33,7 @@ def bersihkan_angka_indo(val):
     if pd.isna(val) or val is None: return 0.0
     if isinstance(val, (int, float)): return float(val)
     val_str = str(val).strip().replace('.', '').replace(',', '.')
-    try: return float(val_str)
+    try: return round(float(val_str), 3)
     except: return 0.0
 
 def is_item_benang(kode_item, gudang=""):
@@ -99,11 +86,11 @@ def siapkan_kolom_standar(df_mb):
             if col_target_qty and pd.notna(r[col_target_qty]) and str(r[col_target_qty]).strip().lower() != 'nan':
                 val = bersihkan_angka_indo(r[col_target_qty])
                 unit = str(r[col_target_unit]).strip().upper() if col_target_unit else 'GR'
-                seri_target_gr[idx] = val if unit == 'GR' else val * 1000.0
+                seri_target_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
             if col_qty and pd.notna(r[col_qty]) and str(r[col_qty]).strip().lower() != 'nan':
                 val = bersihkan_angka_indo(r[col_qty])
                 unit = str(r[col_unit]).strip().upper() if col_unit else 'GR'
-                seri_bb_gr[idx] = val if unit == 'GR' else val * 1000.0
+                seri_bb_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
 
     idx_target = list(df_mb.columns).index(col_target_unit if col_target_unit else col_target_qty) + 1 if (col_target_unit or col_target_qty) else len(df_mb.columns)
     df_mb.insert(idx_target, 'Qty Target Standar (GR)', seri_target_gr)
@@ -123,7 +110,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     # 1. LOOKUP MASTER PIBC
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
-        df_pibc = perbaiki_header_pibc(df_pibc.copy()) 
         col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
         col_act = cari_kolom_akurat(df_pibc, ['ACTUAL', 'QTY', 'JUMLAH'])
         col_kode_obat = cari_kolom_akurat(df_pibc, ['KODEOBAT', 'KODEITEM'])
@@ -136,15 +122,15 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_kode = sanitize_key(r[col_kode_obat]) if col_kode_obat and pd.notna(r[col_kode_obat]) else ""
                 k_nama = sanitize_key(r[col_nama_obat]) if col_nama_obat and pd.notna(r[col_nama_obat]) else ""
                 
-                if k_kode: pibc_lookup[(k_dyelot, k_kode)] = pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act
-                if k_nama: pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
+                if k_kode: pibc_lookup[(k_dyelot, k_kode)] = round(pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act, 3)
+                if k_nama: pibc_lookup[(k_dyelot, k_nama)] = round(pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act, 3)
 
-    # 2. LOOKUP MASTER PG (Diambil dari DataFrame df_pg yang sudah Matang/Bersih dari cleaner.py)
+    # 2. LOOKUP MASTER PG
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         if 'PIBC_PG' in df_pg.columns and 'Qty_PG' in df_pg.columns:
             for _, r in df_pg.iterrows():
-                val_msk = float(r['Qty_PG']) if pd.notna(r['Qty_PG']) else 0.0
+                val_msk = bersihkan_angka_indo(r['Qty_PG'])
                 if val_msk <= 0: continue 
                 
                 raw_pibc = str(r['PIBC_PG'])
@@ -157,8 +143,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
                 k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
                 
-                if k_kode: pg_lookup[(k_ket, k_kode)] = pg_lookup.get((k_ket, k_kode), 0.0) + val_msk
-                if k_nama: pg_lookup[(k_ket, k_nama)] = pg_lookup.get((k_ket, k_nama), 0.0) + val_msk
+                if k_kode: pg_lookup[(k_ket, k_kode)] = round(pg_lookup.get((k_ket, k_kode), 0.0) + val_msk, 3)
+                if k_nama: pg_lookup[(k_ket, k_nama)] = round(pg_lookup.get((k_ket, k_nama), 0.0) + val_msk, 3)
 
     # Ekstrak Ext_PIBC MB
     for idx, row in df_mb.iterrows():
@@ -169,7 +155,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG (Wajib ada kata Gabung)
+    # 3. PRE-PROCESSING CELUP GABUNG
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -188,7 +174,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             if not is_item_benang(kode_item, gudang) and kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item:
                 val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 key_item = (kp, kode_item)
-                gabungan_qty_item[key_item] = gabungan_qty_item.get(key_item, 0.0) + val_bb
+                gabungan_qty_item[key_item] = round(gabungan_qty_item.get(key_item, 0.0) + val_bb, 3)
 
     pibc_celup_gabung = {pibc for pibc, mbs in pibc_to_mb.items() if len(set(mbs)) > 1}
 
@@ -213,11 +199,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             val_target = row.get('Qty Target Standar (GR)')
             if isinstance(val_target, (int, float)) and val_target > 0 and target_gr_utama_grup == 0.0:
-                target_gr_utama_grup = float(val_target)
+                target_gr_utama_grup = round(float(val_target), 3)
 
             if is_item_benang(kode_item, gudang):
-                val_bb = row.get('Qty BB Standar (GR)')
-                if isinstance(val_bb, (int, float)): total_bb_benang_grup += float(val_bb)
+                val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                total_bb_benang_grup = round(total_bb_benang_grup + val_bb, 3)
                 if kode_item not in rincian_benang_list: rincian_benang_list.append(kode_item)
 
             if 'Dyeing STI' in normalisasi_gudang(gudang):
@@ -280,17 +266,20 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             if benang_flag:
                 qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                df_mb.at[idx, 'Selisih Benang (GR)'] = qty_bb_baris - target_gr_utama_grup
+                selisih_baris = round(qty_bb_baris - target_gr_utama_grup, 3)
+                df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_baris
 
                 if not benang_status_rendered:
-                    selisih_total = total_bb_benang_grup - target_gr_utama_grup
+                    selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     benang_status_rendered = True
             else:
                 qty_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                qty_bb_cek = gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb) if (kp_baris in pibc_celup_gabung) else qty_bb
-                if kp_baris in pibc_celup_gabung: df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                qty_bb_cek = round(gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb), 3) if (kp_baris in pibc_celup_gabung) else round(qty_bb, 3)
+                
+                if kp_baris in pibc_celup_gabung: 
+                    df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
 
                 if kp_baris:
                     qty_pibc = None
@@ -311,12 +300,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     
                     if qty_pibc is not None:
                         df_mb.at[idx, 'Qty PIBC'] = qty_pibc
-                        sel_pibc = qty_bb_cek - qty_pibc
+                        sel_pibc = round(qty_bb_cek - qty_pibc, 3)
                         df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
                         
                     if qty_pg is not None:
                         df_mb.at[idx, 'Qty PG'] = qty_pg
-                        sel_pg = qty_bb_cek - qty_pg
+                        sel_pg = round(qty_bb_cek - qty_pg, 3)
                         df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
                     status_pibc = "TIDAK ADA" if qty_pibc is None else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
@@ -384,7 +373,6 @@ def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         if df_pibc is not None and not df_pibc.empty:
-            df_pibc = perbaiki_header_pibc(df_pibc.copy())
             col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
             pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
             if col_dyelot:
