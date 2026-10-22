@@ -9,8 +9,13 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
+    """
+    Sapu bersih seluruh karakter gaib!
+    Hanya menyisakan Huruf, Angka, Titik, Strip, dan PAGAR (#) agar pencocokan mutlak.
+    """
     if not k: return ""
-    k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
+    # Tanda # tidak dihapus untuk membedakan misal 12345#A dan 12345
+    k = re.sub(r'[^A-Z0-9\.\-#]', '', str(k).upper())
     return k.replace('PIBC-', '')
 
 def normalisasi_gudang(nama_gudang):
@@ -44,15 +49,51 @@ def is_item_benang(kode_item, gudang=""):
     if k_upper.startswith('TBB'): return True
     return False
 
-def ekstrak_kode_pibc(teks, gudang=""):
-    if pd.isna(teks): return None
+# =============================================================================
+# LOGIKA EKSTRAKSI PIBC (SUPPORT CASE TO & DOUBLE PIBC)
+# =============================================================================
+def is_to_reprocess(teks, gudang):
+    g_norm = normalisasi_gudang(gudang)
+    if 'Mesin Dyeing' not in g_norm and 'Dyeing STI' not in g_norm:
+        return False
+    t_upper = str(teks).upper()
+    keywords = ['REPROCESS', '+D', '+C', '+ D', '+ C']
+    return any(kw in t_upper for kw in keywords)
+
+def ekstrak_pibc_to(teks):
+    """MODE SNIPER: Hanya ambil 1 PIBC utama dari kurung atau setelah kata TO"""
+    teks_str = str(teks)
+    match_kurung = re.search(r'\((PIBC-[A-Za-z0-9#\-\.]+)\)', teks_str, re.IGNORECASE)
+    if match_kurung: return [match_kurung.group(1).strip().rstrip('.')]
+    
+    match_to = re.search(r'TO\s+(PIBC-[A-Za-z0-9#\-\.]+)', teks_str, re.IGNORECASE)
+    if match_to: return [match_to.group(1).strip().rstrip('.')]
+    
+    # Fallback (Jika indikator TO ada, tapi format penulisan PIBC nya polos)
+    pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
+    hasil = re.findall(pola, teks_str, re.IGNORECASE)
+    if hasil: return [hasil[0].strip().rstrip('.')]
+    return []
+
+def ekstrak_semua_pibc(teks):
+    """MODE JARING: Ambil SEMUA PIBC yang ada di baris (Untuk Case Double PIBC)"""
     teks_str = str(teks)
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
-    hasil = re.search(pola, teks_str, re.IGNORECASE)
-    if hasil: return hasil.group(1).strip().rstrip('.')
-    match_angka = re.search(r'([0-9]{8,}(?:#[A-Za-z0-9]+)?)', teks_str)
-    if match_angka: return match_angka.group(1).strip()
-    return None
+    hasil = re.findall(pola, teks_str, re.IGNORECASE)
+    if hasil:
+        return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil])) # Bersihkan duplikat
+    
+    match_angka = re.findall(r'([0-9]{8,}(?:#[A-Za-z0-9]+)?)', teks_str)
+    if match_angka:
+        return list(dict.fromkeys([x.strip() for x in match_angka]))
+    return []
+
+def dapatkan_pibc_baris(teks, gudang):
+    """Fungsi Penentu: Masuk mode TO atau mode Double PIBC?"""
+    if is_to_reprocess(teks, gudang):
+        return ekstrak_pibc_to(teks)
+    return ekstrak_semua_pibc(teks)
+# =============================================================================
 
 def siapkan_kolom_standar(df_mb):
     col_gudang_mb = cari_kolom_akurat(df_mb, ['GUDANG'])
@@ -102,6 +143,10 @@ def siapkan_kolom_standar(df_mb):
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
+    # Tambahkan kolom list tersembunyi untuk tracker Case Double PIBC
+    df_mb['Ext_PIBC_List'] = ""
+    df_mb['Ext_PIBC_List'] = df_mb['Ext_PIBC_List'].astype(object)
+
     return df_mb
 
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
@@ -136,44 +181,50 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 raw_pibc = str(r['PIBC_PG'])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
-                pibc_ext = ekstrak_kode_pibc(raw_pibc)
-                if not pibc_ext: continue
+                # Menggunakan deteksi bebas (jaring) agar terbaca mau pakai # atau tidak
+                pibc_ext_list = ekstrak_semua_pibc(raw_pibc)
+                if not pibc_ext_list: continue
                 
-                k_ket = sanitize_key(pibc_ext)
+                k_ket = sanitize_key(pibc_ext_list[0]) # Biasanya PG cuma punya 1 PIBC per baris
                 k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
                 k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
                 
                 if k_kode: pg_lookup[(k_ket, k_kode)] = round(pg_lookup.get((k_ket, k_kode), 0.0) + val_msk, 3)
                 if k_nama: pg_lookup[(k_ket, k_nama)] = round(pg_lookup.get((k_ket, k_nama), 0.0) + val_msk, 3)
 
-    # Ekstrak Ext_PIBC MB
+    # Ekstrak PIBC MB (Multi-PIBC & TO Tracker)
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
         teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
-        kp = ekstrak_kode_pibc(teks_gab, gudang)
-        if kp: df_mb.at[idx, 'Ext_PIBC'] = kp.strip().upper()
+        pibc_list = dapatkan_pibc_baris(teks_gab, gudang)
+        if pibc_list: 
+            df_mb.at[idx, 'Ext_PIBC'] = ", ".join(pibc_list).upper()
+            df_mb.at[idx, 'Ext_PIBC_List'] = pibc_list
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG & AKUMULASI QTY OBAT PER TRANSAKSI
+    # 3. PRE-PROCESSING CELUP GABUNG & AKUMULASI OBAT
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
     for idx, row in df_mb.iterrows():
         ket_gabung_cek = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
         is_teks_gabung = 'celup gabung' in ket_gabung_cek.lower() or 'gabung' in ket_gabung_cek.lower()
-        kp = str(row.get('Ext_PIBC', '')).strip().upper()
+        kp_list = row.get('Ext_PIBC_List')
         k_val = row.get('Kode', idx)
         
-        if is_teks_gabung and kp and kp != '':
-            if kp not in pibc_to_mb: pibc_to_mb[kp] = []
-            if k_val not in pibc_to_mb[kp]: pibc_to_mb[kp].append(k_val)
+        # Celup Gabung mengacu pada PIBC pertama dari list untuk sinkronisasi relasi
+        kp_utama = sanitize_key(kp_list[0]) if isinstance(kp_list, list) and len(kp_list) > 0 else ""
+        
+        if is_teks_gabung and kp_utama != '':
+            if kp_utama not in pibc_to_mb: pibc_to_mb[kp_utama] = []
+            if k_val not in pibc_to_mb[kp_utama]: pibc_to_mb[kp_utama].append(k_val)
 
             kode_item = str(row.get('Kode Item', '')).strip().upper()
             gudang = str(row.get('Gudang', ''))
             if not is_item_benang(kode_item, gudang) and kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item:
                 val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                key_item = (kp, kode_item)
+                key_item = (kp_utama, kode_item)
                 gabungan_qty_item[key_item] = round(gabungan_qty_item.get(key_item, 0.0) + val_bb, 3)
 
     pibc_celup_gabung = {pibc for pibc, mbs in pibc_to_mb.items() if len(set(mbs)) > 1}
@@ -181,7 +232,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     # 4. PROSES UTAMA CROSSCHECK
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
-        kode_pibc_grup = None
+        pibc_list_grup = []
         target_gr_utama_grup = 0.0
         total_bb_benang_grup = 0.0
         ada_item_non_tbb_sti = False
@@ -192,11 +243,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
             gudang = str(row.get('Gudang', ''))
-            kp_baris = str(row.get('Ext_PIBC', '')).strip()
             
-            if not kode_pibc_grup and kp_baris:
-                grup_punya_pibc = True
-                kode_pibc_grup = kp_baris
+            if not grup_punya_pibc:
+                kp_l = row.get('Ext_PIBC_List')
+                if isinstance(kp_l, list) and len(kp_l) > 0:
+                    grup_punya_pibc = True
+                    pibc_list_grup = kp_l
 
             val_target = row.get('Qty Target Standar (GR)')
             if isinstance(val_target, (int, float)) and val_target > 0 and target_gr_utama_grup == 0.0:
@@ -219,15 +271,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         rincian_benang_str = ", ".join(rincian_benang_list)
         is_celup_gabung = False
         pasangan_str = ""
-        if kode_pibc_grup and kode_pibc_grup.upper() in pibc_celup_gabung:
+        kp_grup_utama = sanitize_key(pibc_list_grup[0]) if len(pibc_list_grup) > 0 else ""
+        
+        if kp_grup_utama and kp_grup_utama in pibc_celup_gabung:
             is_celup_gabung = True
-            semua_mb_terkait = pibc_to_mb.get(kode_pibc_grup.upper(), [])
+            semua_mb_terkait = pibc_to_mb.get(kp_grup_utama, [])
             pasangan_str = ", ".join([str(m) for m in set(semua_mb_terkait) if m != k_val])
 
         info_cg_base = f"Celup Gabung dgn: {pasangan_str}" if is_celup_gabung else ""
         is_first_row = True
         
-        # Tracker untuk mencegah duplikasi cetak baris
         benang_status_rendered = False
         obat_rendered_set = set()
         status_cek_list = []
@@ -239,7 +292,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             gudang = str(row.get('Gudang', ''))
             g_norm = normalisasi_gudang(gudang)
             benang_flag = is_item_benang(kode_item, gudang)
-            kp_baris = str(row.get('Ext_PIBC', '')).strip().upper()
 
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
@@ -274,7 +326,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
 
             if benang_flag:
-                # Hanya cetak di baris benang pertama saja
                 if not benang_status_rendered:
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
@@ -284,47 +335,62 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     benang_status_rendered = True
             else:
                 k_item_upper = kode_item.upper()
-                key_obat = (kp_baris, k_item_upper)
-                
-                # Hanya cetak jika item ini belum pernah diproses di transaksi ini
-                if key_obat not in obat_rendered_set:
+                # Kunci obat murni berpatok pada kode item di grup ini
+                if k_item_upper not in obat_rendered_set:
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     
-                    if kp_baris in pibc_celup_gabung:
-                        qty_bb_cek = round(gabungan_qty_item.get((kp_baris, k_item_upper), qty_bb_baris), 3)
+                    if kp_grup_utama in pibc_celup_gabung:
+                        qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
                         df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
 
-                    if kp_baris:
-                        qty_pibc = None
-                        qty_pg = None
+                    if len(pibc_list_grup) > 0:
+                        qty_pibc_total = 0.0
+                        qty_pg_total = 0.0
+                        found_in_pibc = False
+                        found_in_pg = False
                         
-                        k_ket = sanitize_key(kp_baris)
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
                         
-                        if (k_ket, k_kode) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_kode)]
-                        elif (k_ket, k_nama) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_nama)]
+                        # LOGIKA AKUMULASI LINTAS PIBC (UNTUK CASE PIBC DOUBLE)
+                        for pibc_raw in pibc_list_grup:
+                            kp_san = sanitize_key(pibc_raw)
+                            
+                            # Cek di Master PIBC
+                            if (kp_san, k_kode) in pibc_lookup:
+                                qty_pibc_total += pibc_lookup[(kp_san, k_kode)]
+                                found_in_pibc = True
+                            elif (kp_san, k_nama) in pibc_lookup:
+                                qty_pibc_total += pibc_lookup[(kp_san, k_nama)]
+                                found_in_pibc = True
 
-                        if (k_ket, k_kode) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_kode)]
-                        elif (k_ket, k_nama) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_nama)]
+                            # Cek di Master PG
+                            if (kp_san, k_kode) in pg_lookup:
+                                qty_pg_total += pg_lookup[(kp_san, k_kode)]
+                                found_in_pg = True
+                            elif (kp_san, k_nama) in pg_lookup:
+                                qty_pg_total += pg_lookup[(kp_san, k_nama)]
+                                found_in_pg = True
 
                         sel_pibc = None
                         sel_pg = None
                         
-                        if qty_pibc is not None:
-                            df_mb.at[idx, 'Qty PIBC'] = qty_pibc
-                            sel_pibc = round(qty_bb_cek - qty_pibc, 3)
+                        if found_in_pibc:
+                            qty_pibc_total = round(qty_pibc_total, 3)
+                            df_mb.at[idx, 'Qty PIBC'] = qty_pibc_total
+                            sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
                             
-                        if qty_pg is not None:
-                            df_mb.at[idx, 'Qty PG'] = qty_pg
-                            sel_pg = round(qty_bb_cek - qty_pg, 3)
+                        if found_in_pg:
+                            qty_pg_total = round(qty_pg_total, 3)
+                            df_mb.at[idx, 'Qty PG'] = qty_pg_total
+                            sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
-                        status_pibc = "TIDAK ADA" if qty_pibc is None else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
-                        status_pg = "TIDAK ADA" if qty_pg is None else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
+                        status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
+                        status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
 
                         if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
                             df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
@@ -338,7 +404,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
                         elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
                     
-                    obat_rendered_set.add(key_obat)
+                    obat_rendered_set.add(k_item_upper)
 
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
@@ -363,6 +429,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             df_mb.at[idx_first, 'Status Cek'] = '' 
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
+            
+    # Hapus kolom Tracker List agar tidak ikut terunduh di Excel akhir
+    if 'Ext_PIBC_List' in df_mb.columns:
+        df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
     return df_mb
 
