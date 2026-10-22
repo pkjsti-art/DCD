@@ -14,7 +14,6 @@ def sanitize_key(k):
     Hanya menyisakan Huruf, Angka, Titik, Strip, dan PAGAR (#) agar pencocokan mutlak.
     """
     if not k: return ""
-    # Tanda # tidak dihapus untuk membedakan misal 12345#A dan 12345
     k = re.sub(r'[^A-Z0-9\.\-#]', '', str(k).upper())
     return k.replace('PIBC-', '')
 
@@ -50,7 +49,7 @@ def is_item_benang(kode_item, gudang=""):
     return False
 
 # =============================================================================
-# LOGIKA EKSTRAKSI PIBC (SUPPORT CASE TO & DOUBLE PIBC)
+# LOGIKA EKSTRAKSI PIBC (SUPER ADAPTIF UNTUK CASE TO BERDASARKAN SOP BARU)
 # =============================================================================
 def is_to_reprocess(teks, gudang):
     g_norm = normalisasi_gudang(gudang)
@@ -61,27 +60,43 @@ def is_to_reprocess(teks, gudang):
     return any(kw in t_upper for kw in keywords)
 
 def ekstrak_pibc_to(teks):
-    """MODE SNIPER: Hanya ambil 1 PIBC utama dari kurung atau setelah kata TO"""
+    """
+    MODE SNIPER KETAT (SOP BARU): 
+    1. Sapu semua kode di dalam kurung.
+    2. Atau sapu semua kode setelah kata TO.
+    3. TANPA FALLBACK (Jika tidak ada kurung/TO, maka dianggap TIDAK ADA PIBC).
+    """
     teks_str = str(teks)
-    match_kurung = re.search(r'\((PIBC-[A-Za-z0-9#\-\.]+)\)', teks_str, re.IGNORECASE)
-    if match_kurung: return [match_kurung.group(1).strip().rstrip('.')]
+    hasil = []
     
-    match_to = re.search(r'TO\s+(PIBC-[A-Za-z0-9#\-\.]+)', teks_str, re.IGNORECASE)
-    if match_to: return [match_to.group(1).strip().rstrip('.')]
+    # Pola regex dinamis: menangkap "PIBC-..." ATAU sekadar "angka 8 digit + opsional pagar"
+    pola_kode = r'(PIBC-[A-Za-z0-9#\-\.]+|[0-9]{8,}(?:#[A-Za-z0-9]+)?)'
     
-    # Fallback (Jika indikator TO ada, tapi format penulisan PIBC nya polos)
-    pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
-    hasil = re.findall(pola, teks_str, re.IGNORECASE)
-    if hasil: return [hasil[0].strip().rstrip('.')]
-    return []
+    # 1. Sapu SEMUA isi di dalam SEMUA tanda kurung ()
+    isi_kurung = re.findall(r'\((.*?)\)', teks_str)
+    if isi_kurung:
+        for isi in isi_kurung:
+            kodes = re.findall(pola_kode, isi, re.IGNORECASE)
+            hasil.extend(kodes)
+            
+    # 2. Jika tidak ada kurung sama sekali, cari setelah kata TO
+    if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
+        parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
+        if len(parts) > 1:
+            bagian_setelah_to = parts[-1] # Ambil sisa kalimat setelah kata TO terakhir
+            kodes = re.findall(pola_kode, bagian_setelah_to, re.IGNORECASE)
+            hasil.extend(kodes)
+            
+    # 3. NO FALLBACK. Langsung bersihkan hasil dan kembalikan list (bisa kosong)
+    return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
 def ekstrak_semua_pibc(teks):
-    """MODE JARING: Ambil SEMUA PIBC yang ada di baris (Untuk Case Double PIBC)"""
+    """MODE JARING: Ambil SEMUA PIBC yang ada di baris (Untuk Case Double PIBC Murni)"""
     teks_str = str(teks)
     pola = r'(PIBC-[A-Za-z0-9#\-\.]+)'
     hasil = re.findall(pola, teks_str, re.IGNORECASE)
     if hasil:
-        return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil])) # Bersihkan duplikat
+        return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     
     match_angka = re.findall(r'([0-9]{8,}(?:#[A-Za-z0-9]+)?)', teks_str)
     if match_angka:
@@ -89,7 +104,6 @@ def ekstrak_semua_pibc(teks):
     return []
 
 def dapatkan_pibc_baris(teks, gudang):
-    """Fungsi Penentu: Masuk mode TO atau mode Double PIBC?"""
     if is_to_reprocess(teks, gudang):
         return ekstrak_pibc_to(teks)
     return ekstrak_semua_pibc(teks)
@@ -143,7 +157,6 @@ def siapkan_kolom_standar(df_mb):
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
-    # Tambahkan kolom list tersembunyi untuk tracker Case Double PIBC
     df_mb['Ext_PIBC_List'] = ""
     df_mb['Ext_PIBC_List'] = df_mb['Ext_PIBC_List'].astype(object)
 
@@ -181,11 +194,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 raw_pibc = str(r['PIBC_PG'])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
-                # Menggunakan deteksi bebas (jaring) agar terbaca mau pakai # atau tidak
                 pibc_ext_list = ekstrak_semua_pibc(raw_pibc)
                 if not pibc_ext_list: continue
                 
-                k_ket = sanitize_key(pibc_ext_list[0]) # Biasanya PG cuma punya 1 PIBC per baris
+                k_ket = sanitize_key(pibc_ext_list[0])
                 k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
                 k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
                 
@@ -213,7 +225,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         kp_list = row.get('Ext_PIBC_List')
         k_val = row.get('Kode', idx)
         
-        # Celup Gabung mengacu pada PIBC pertama dari list untuk sinkronisasi relasi
         kp_utama = sanitize_key(kp_list[0]) if isinstance(kp_list, list) and len(kp_list) > 0 else ""
         
         if is_teks_gabung and kp_utama != '':
@@ -335,7 +346,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     benang_status_rendered = True
             else:
                 k_item_upper = kode_item.upper()
-                # Kunci obat murni berpatok pada kode item di grup ini
                 if k_item_upper not in obat_rendered_set:
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     
@@ -354,11 +364,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
                         
-                        # LOGIKA AKUMULASI LINTAS PIBC (UNTUK CASE PIBC DOUBLE)
+                        # LOGIKA AKUMULASI LINTAS PIBC (UNTUK CASE PIBC DOUBLE & TO MULTI)
                         for pibc_raw in pibc_list_grup:
                             kp_san = sanitize_key(pibc_raw)
                             
-                            # Cek di Master PIBC
                             if (kp_san, k_kode) in pibc_lookup:
                                 qty_pibc_total += pibc_lookup[(kp_san, k_kode)]
                                 found_in_pibc = True
@@ -366,7 +375,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                                 qty_pibc_total += pibc_lookup[(kp_san, k_nama)]
                                 found_in_pibc = True
 
-                            # Cek di Master PG
                             if (kp_san, k_kode) in pg_lookup:
                                 qty_pg_total += pg_lookup[(kp_san, k_kode)]
                                 found_in_pg = True
@@ -430,7 +438,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
             
-    # Hapus kolom Tracker List agar tidak ikut terunduh di Excel akhir
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
@@ -462,8 +469,14 @@ def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
         if df_pibc is not None and not df_pibc.empty:
             col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
             pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
+            
+            pibc_di_mb_expanded = set()
+            for p_str in pibc_di_mb:
+                for p in p_str.split(','):
+                    pibc_di_mb_expanded.add(p.strip())
+
             if col_dyelot:
-                df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb)].to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
+                df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
             else: df_pibc.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
         else: pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
     return output.getvalue()
@@ -473,8 +486,14 @@ def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         if df_pg is not None and not df_pg.empty:
             pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
+            
+            pibc_di_mb_expanded = set()
+            for p_str in pibc_di_mb:
+                for p in p_str.split(','):
+                    pibc_di_mb_expanded.add(p.strip())
+                    
             if 'PIBC_PG' in df_pg.columns:
-                df_pg[~df_pg['PIBC_PG'].astype(str).apply(sanitize_key).isin(pibc_di_mb)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
+                df_pg[~df_pg['PIBC_PG'].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
             else: df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
         else: pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
     return output.getvalue()
