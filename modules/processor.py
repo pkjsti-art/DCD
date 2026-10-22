@@ -10,13 +10,12 @@ BARIS_DIABAIKAN = [
 
 def sanitize_key(k):
     """
-    Sapu bersih spasi dan karakter gaib (seperti strip) agar pencocokan mutlak,
-    NAMUN tetap mempertahankan huruf pembeda (seperti TU) dan pagar (#).
-    Contoh: 'TU-PIBC-123' dan 'PIBC-123-TU' akan menjadi 'TU123' dan '123TU' (Tetap Berbeda!)
+    Sapu bersih spasi dan karakter gaib.
+    MENGIZINKAN: Huruf, Angka, Titik, Pagar (#), dan Plus (+).
+    Contoh: 'TU-PIBC-123' -> 'TU123' | '+ PIBC-123' -> '+123'
     """
     if not k: return ""
-    # Hanya sisakan Huruf, Angka, Titik, dan Pagar (#). Strip (-) dihapus agar kebal typo spasi/strip
-    k = re.sub(r'[^A-Z0-9\.#]', '', str(k).upper())
+    k = re.sub(r'[^A-Z0-9\.#\+]', '', str(k).upper())
     return k.replace('PIBC', '')
 
 def normalisasi_gudang(nama_gudang):
@@ -51,10 +50,31 @@ def is_item_benang(kode_item, gudang=""):
     return False
 
 # =============================================================================
-# LOGIKA EKSTRAKSI PIBC (SUPER ADAPTIF)
-# Menangkap prefix (TU-PIBC), suffix (PIBC-TU), angka 8 digit, dan mengabaikan + atau ---
+# LOGIKA FILTER PLUS & EKSTRAKSI PIBC ISOLASI
 # =============================================================================
-POLA_PIBC = r'((?:[A-Za-z]+[\-\s]+)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z]+)?)'
+def filter_plus(teks):
+    """
+    Mengecek tanda + di kalimat. Jika sebelum + ada tanda pemisah (, ; /), 
+    maka + dipertahankan. Jika tidak ada pemisah, jadikan spasi.
+    """
+    if pd.isna(teks): return ""
+    teks = str(teks)
+    hasil = ""
+    for i, char in enumerate(teks):
+        if char == '+':
+            j = i - 1
+            while j >= 0 and teks[j].isspace():
+                j -= 1
+            # Cek karakter valid sebelum +
+            if j >= 0 and teks[j] in [',', ';', '/']:
+                hasil += char
+            else:
+                hasil += ' ' # Berfungsi sebagai pemisah kata, bukan bagian kode
+        else:
+            hasil += char
+    return hasil
+
+POLA_PIBC = r'((?:\b[A-Za-z]{1,3}[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
 
 def is_to_reprocess(teks, gudang):
     g_norm = normalisasi_gudang(gudang)
@@ -65,7 +85,6 @@ def is_to_reprocess(teks, gudang):
     return any(kw in t_upper for kw in keywords)
 
 def ekstrak_pibc_lab(teks):
-    """Logika Transisi Lab & RnD: Belah berdasarkan 'Reprocess'. Prioritas Belakang -> Depan"""
     teks_str = str(teks)
     parts = re.split(r'\bREPROCESS\b', teks_str, flags=re.IGNORECASE)
     
@@ -79,22 +98,18 @@ def ekstrak_pibc_lab(teks):
         hasil = re.findall(POLA_PIBC, bagian_sebelum, re.IGNORECASE)
         if hasil:
             return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
-            
     return []
 
 def ekstrak_pibc_to(teks):
-    """Logika Mesin Dyeing: Sapu dalam Kurung (meski tidak ditutup ---) ATAU setelah TO"""
     teks_str = str(teks)
     hasil = []
     
-    # 1. Sapu isi dalam kurung (termasuk jika admin lupa memberi tutup kurung di akhir)
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
     if chunks_kurung:
         for chunk in chunks_kurung:
             kodes = re.findall(POLA_PIBC, chunk, re.IGNORECASE)
             hasil.extend(kodes)
             
-    # 2. Sapu setelah kata TO
     if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
@@ -105,7 +120,6 @@ def ekstrak_pibc_to(teks):
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
 def ekstrak_semua_pibc(teks):
-    """MODE JARING: Sapu bersih semua kode PIBC di kalimat (Case Double Murni / Koma / Titik Koma)"""
     teks_str = str(teks)
     hasil = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
     if hasil:
@@ -113,14 +127,12 @@ def ekstrak_semua_pibc(teks):
     return []
 
 def dapatkan_pibc_baris(teks, gudang):
-    """ROUTER: Mengarahkan jenis ekstraksi berdasarkan Gudang dan Keterangan"""
+    if not teks.strip(): return []
     g_norm = normalisasi_gudang(gudang)
     if 'Lab & RnD' in g_norm and 'REPROCESS' in str(teks).upper():
         return ekstrak_pibc_lab(teks)
-        
     if is_to_reprocess(teks, gudang):
         return ekstrak_pibc_to(teks)
-        
     return ekstrak_semua_pibc(teks)
 # =============================================================================
 
@@ -180,7 +192,6 @@ def siapkan_kolom_standar(df_mb):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # 1. LOOKUP MASTER PIBC
     pibc_lookup = {}
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
@@ -198,7 +209,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pibc_lookup[(k_dyelot, k_kode)] = round(pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act, 3)
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = round(pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act, 3)
 
-    # 2. LOOKUP MASTER PG
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         if 'PIBC_PG' in df_pg.columns and 'Qty_PG' in df_pg.columns:
@@ -219,18 +229,26 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pg_lookup[(k_ket, k_kode)] = round(pg_lookup.get((k_ket, k_kode), 0.0) + val_msk, 3)
                 if k_nama: pg_lookup[(k_ket, k_nama)] = round(pg_lookup.get((k_ket, k_nama), 0.0) + val_msk, 3)
 
-    # Ekstrak PIBC MB
+    # Ekstrak PIBC MB - Logika Isolasi Kolom Diterapkan Di Sini!
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
-        teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
-        pibc_list = dapatkan_pibc_baris(teks_gab, gudang)
+        
+        # Ekstrak kolom secara terpisah dan saring tanda +
+        ket1 = filter_plus(row.get('Keterangan', ''))
+        ket2 = filter_plus(row.get('Keterangan Lain', ''))
+        
+        pibc_list1 = dapatkan_pibc_baris(ket1, gudang)
+        pibc_list2 = dapatkan_pibc_baris(ket2, gudang)
+        
+        # Gabungkan dan buang duplikat jika ada yang tumpang tindih
+        pibc_list = list(dict.fromkeys(pibc_list1 + pibc_list2))
+        
         if pibc_list: 
             df_mb.at[idx, 'Ext_PIBC'] = ", ".join(pibc_list).upper()
             df_mb.at[idx, 'Ext_PIBC_List'] = pibc_list
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -255,7 +273,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     pibc_celup_gabung = {pibc for pibc, mbs in pibc_to_mb.items() if len(set(mbs)) > 1}
 
-    # 4. PROSES UTAMA CROSSCHECK
     for k_val, df_sub in grup_kode:
         grup_punya_pibc = False
         pibc_list_grup = []
