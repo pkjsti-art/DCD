@@ -9,6 +9,10 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
+    """
+    Sapu bersih seluruh karakter gaib!
+    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan mutlak.
+    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
@@ -186,6 +190,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         total_bb_benang_grup = 0.0
         ada_item_non_tbb_sti = False
         rincian_benang_list = []
+        item_qty_dalam_transaksi = {} # Penyimpanan jumlah obat ganda dalam 1 transaksi biasa
         
         for idx in df_sub.index:
             row = df_mb.loc[idx]
@@ -205,6 +210,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 total_bb_benang_grup = round(total_bb_benang_grup + val_bb, 3)
                 if kode_item not in rincian_benang_list: rincian_benang_list.append(kode_item)
+            else:
+                if kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item.upper():
+                    val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                    k_item_upper = kode_item.upper()
+                    item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
 
             if 'Dyeing STI' in normalisasi_gudang(gudang):
                 if not (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper()) and kode_item and not kode_item.startswith('TBB'):
@@ -265,21 +275,23 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
 
             if benang_flag:
-                qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                selisih_baris = round(qty_bb_baris - target_gr_utama_grup, 3)
-                df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_baris
+                # Selisih Benang menampilkan deviasi TOTAL (Bukan Per Baris) agar selaras dengan status CORRECT/INCORRECT
+                selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
+                df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
 
                 if not benang_status_rendered:
-                    selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     benang_status_rendered = True
             else:
-                qty_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                qty_bb_cek = round(gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb), 3) if (kp_baris in pibc_celup_gabung) else round(qty_bb, 3)
+                qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 
-                if kp_baris in pibc_celup_gabung: 
+                # Memilah Total QTY Obat: Jika celup gabung pakai akumulasi global, jika biasa pakai akumulasi per transaksi
+                if kp_baris in pibc_celup_gabung:
+                    qty_bb_cek = round(gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb_baris), 3)
                     df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                else:
+                    qty_bb_cek = round(item_qty_dalam_transaksi.get(kode_item.upper(), qty_bb_baris), 3)
 
                 if kp_baris:
                     qty_pibc = None
