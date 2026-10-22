@@ -9,10 +9,6 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
-    """
-    Sapu bersih seluruh karakter gaib!
-    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan mutlak.
-    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
@@ -159,7 +155,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG
+    # 3. PRE-PROCESSING CELUP GABUNG & AKUMULASI QTY OBAT PER TRANSAKSI
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -190,7 +186,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         total_bb_benang_grup = 0.0
         ada_item_non_tbb_sti = False
         rincian_benang_list = []
-        item_qty_dalam_transaksi = {} # Penyimpanan jumlah obat ganda dalam 1 transaksi biasa
+        item_qty_dalam_transaksi = {} 
         
         for idx in df_sub.index:
             row = df_mb.loc[idx]
@@ -230,7 +226,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
         info_cg_base = f"Celup Gabung dgn: {pasangan_str}" if is_celup_gabung else ""
         is_first_row = True
+        
+        # Tracker untuk mencegah duplikasi cetak baris
         benang_status_rendered = False
+        obat_rendered_set = set()
         status_cek_list = []
 
         for idx in df_sub.index:
@@ -275,65 +274,71 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             ada_keyword_selisih = any(kw in nama_brg_jdi or kw in teks_gab.upper() for kw in keyword_selisih)
 
             if benang_flag:
-                # Selisih Benang menampilkan deviasi TOTAL (Bukan Per Baris) agar selaras dengan status CORRECT/INCORRECT
-                selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
-                df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
-
+                # Hanya cetak di baris benang pertama saja
                 if not benang_status_rendered:
+                    selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
+
                     if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     benang_status_rendered = True
             else:
-                qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                k_item_upper = kode_item.upper()
+                key_obat = (kp_baris, k_item_upper)
                 
-                # Memilah Total QTY Obat: Jika celup gabung pakai akumulasi global, jika biasa pakai akumulasi per transaksi
-                if kp_baris in pibc_celup_gabung:
-                    qty_bb_cek = round(gabungan_qty_item.get((kp_baris, kode_item.upper()), qty_bb_baris), 3)
-                    df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
-                else:
-                    qty_bb_cek = round(item_qty_dalam_transaksi.get(kode_item.upper(), qty_bb_baris), 3)
-
-                if kp_baris:
-                    qty_pibc = None
-                    qty_pg = None
+                # Hanya cetak jika item ini belum pernah diproses di transaksi ini
+                if key_obat not in obat_rendered_set:
+                    qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     
-                    k_ket = sanitize_key(kp_baris)
-                    k_kode = sanitize_key(kode_item)
-                    k_nama = sanitize_key(nama_item)
-                    
-                    if (k_ket, k_kode) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_kode)]
-                    elif (k_ket, k_nama) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_nama)]
+                    if kp_baris in pibc_celup_gabung:
+                        qty_bb_cek = round(gabungan_qty_item.get((kp_baris, k_item_upper), qty_bb_baris), 3)
+                        df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                    else:
+                        qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
 
-                    if (k_ket, k_kode) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_kode)]
-                    elif (k_ket, k_nama) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_nama)]
-
-                    sel_pibc = None
-                    sel_pg = None
-                    
-                    if qty_pibc is not None:
-                        df_mb.at[idx, 'Qty PIBC'] = qty_pibc
-                        sel_pibc = round(qty_bb_cek - qty_pibc, 3)
-                        df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
+                    if kp_baris:
+                        qty_pibc = None
+                        qty_pg = None
                         
-                    if qty_pg is not None:
-                        df_mb.at[idx, 'Qty PG'] = qty_pg
-                        sel_pg = round(qty_bb_cek - qty_pg, 3)
-                        df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
+                        k_ket = sanitize_key(kp_baris)
+                        k_kode = sanitize_key(kode_item)
+                        k_nama = sanitize_key(nama_item)
+                        
+                        if (k_ket, k_kode) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_kode)]
+                        elif (k_ket, k_nama) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_nama)]
 
-                    status_pibc = "TIDAK ADA" if qty_pibc is None else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
-                    status_pg = "TIDAK ADA" if qty_pg is None else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
+                        if (k_ket, k_kode) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_kode)]
+                        elif (k_ket, k_nama) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_nama)]
 
-                    if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
-                        status_cek_list.append(f"Kelebihan [{kode_item}]")
-                    elif status_pibc == "MATCH" and status_pg == "MATCH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC & PG'
-                    elif status_pibc == "MATCH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG SELISIH)'
-                    elif status_pibc == "MATCH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (TIDAK ADA DI PG)'
-                    elif status_pg == "MATCH" and status_pibc == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC SELISIH)'
-                    elif status_pg == "MATCH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (TIDAK ADA DI PIBC)'
-                    elif status_pibc == "SELISIH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'SELISIH KEDUANYA'
-                    elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
-                    elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
+                        sel_pibc = None
+                        sel_pg = None
+                        
+                        if qty_pibc is not None:
+                            df_mb.at[idx, 'Qty PIBC'] = qty_pibc
+                            sel_pibc = round(qty_bb_cek - qty_pibc, 3)
+                            df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
+                            
+                        if qty_pg is not None:
+                            df_mb.at[idx, 'Qty PG'] = qty_pg
+                            sel_pg = round(qty_bb_cek - qty_pg, 3)
+                            df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
+
+                        status_pibc = "TIDAK ADA" if qty_pibc is None else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
+                        status_pg = "TIDAK ADA" if qty_pg is None else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
+
+                        if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
+                            df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
+                            status_cek_list.append(f"Kelebihan [{kode_item}]")
+                        elif status_pibc == "MATCH" and status_pg == "MATCH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC & PG'
+                        elif status_pibc == "MATCH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG SELISIH)'
+                        elif status_pibc == "MATCH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (TIDAK ADA DI PG)'
+                        elif status_pg == "MATCH" and status_pibc == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC SELISIH)'
+                        elif status_pg == "MATCH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (TIDAK ADA DI PIBC)'
+                        elif status_pibc == "SELISIH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'SELISIH KEDUANYA'
+                        elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
+                        elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
+                    
+                    obat_rendered_set.add(key_obat)
 
             if is_first_row:
                 kode_bj = str(row.get('Kode Barang Jadi', '')).strip()
