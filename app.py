@@ -43,13 +43,15 @@ if menu == "Cross Check Data":
     if st.button("Proses Data Sekarang", type="primary"):
         if uploaded_mb and uploaded_pibc:
             with st.spinner("Sedang membersihkan dan memproses crosscheck data..."):
+                # 1. Bersihkan Data Master (Dieliminasi dari Spasi Gaib dan Nilai 0)
                 df_pibc_bersih = bersihkan_master_pibc(uploaded_pibc)
                 
                 df_pg_bersih = None
                 if uploaded_pg:
-                    df_pg_list = [bersihkan_master_pg(f) for f in uploaded_pg]
-                    df_pg_bersih = pd.concat(df_pg_list, ignore_index=True)
+                    # Cukup 1 baris pemanggilan, fungsi sudah menghandle multi-file & concat otomatis
+                    df_pg_bersih = bersihkan_master_pg(uploaded_pg) 
                 
+                # 2. Proses dan Gabungkan File Master MB
                 df_gabung_list = []
                 for file_mb in uploaded_mb:
                     df_bersih = bersihkan_master_mb(file_mb)
@@ -57,6 +59,8 @@ if menu == "Cross Check Data":
                     df_gabung_list.append(df_siap)
                 
                 df_final_mb = pd.concat(df_gabung_list, ignore_index=True)
+                
+                # 3. Jalankan Eksekusi Logika Utama
                 df_hasil = jalankan_proses_crosscheck(df_final_mb, df_pibc_bersih, df_pg_bersih)
                 
                 # SIMPAN HASIL KE SESSION STATE
