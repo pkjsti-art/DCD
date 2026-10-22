@@ -9,10 +9,6 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
-    """
-    Sapu bersih seluruh karakter gaib!
-    Hanya menyisakan Huruf, Angka, Titik, dan Strip agar pencocokan 100% mutlak.
-    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.\-]', '', str(k).upper())
     return k.replace('PIBC-', '')
@@ -148,7 +144,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_kode: pibc_lookup[(k_dyelot, k_kode)] = pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act
 
-    # 2. LOOKUP MASTER PG (SEKARANG KUNCI SANGAT BERSIH DARI KARAKTER GAIB)
+    # 2. LOOKUP MASTER PG (DENGAN LOGIKA PEMBERSIHAN MANUAL ANDA)
     pg_lookup = {}
     if df_pg is not None and not df_pg.empty:
         df_pg = perbaiki_header_pg(df_pg.copy()) 
@@ -158,9 +154,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         col_nama_var = cari_kolom_akurat(df_pg, ['NAMAVARIANT', 'NAMAITEM'])
         
         if col_ket_det and col_masuk:
-            for _, r in df_pg.iterrows():
-                val_msk = bersihkan_angka_indo(r[col_masuk])
-                if val_msk <= 0: continue 
+            # ---> IMPLEMENTASI IDE JENIUS ANDA: SAPU BERSIH DATA NOL DI AWAL <---
+            df_pg['TEMP_MASUK'] = df_pg[col_masuk].apply(bersihkan_angka_indo)
+            df_pg_bersih = df_pg[df_pg['TEMP_MASUK'] > 0].copy() # Buang semua baris yang masuknya 0!
+            
+            for _, r in df_pg_bersih.iterrows():
+                val_msk = r['TEMP_MASUK']
                 
                 raw_pibc = str(r[col_ket_det])
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
@@ -184,7 +183,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
 
-    # 3. PRE-PROCESSING CELUP GABUNG (Wajib ada kata Gabung)
+    # 3. PRE-PROCESSING CELUP GABUNG
     pibc_to_mb = {}
     gabungan_qty_item = {}
 
@@ -315,11 +314,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     k_kode = sanitize_key(kode_item)
                     k_nama = sanitize_key(nama_item)
                     
-                    # Cek PIBC
                     if (k_ket, k_kode) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_kode)]
                     elif (k_ket, k_nama) in pibc_lookup: qty_pibc = pibc_lookup[(k_ket, k_nama)]
 
-                    # Cek PG (Anti-Spasi Gaib)
                     if (k_ket, k_kode) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_kode)]
                     elif (k_ket, k_nama) in pg_lookup: qty_pg = pg_lookup[(k_ket, k_nama)]
 
