@@ -57,8 +57,7 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    # PERBAIKAN: Melepas batasan depan, +C/+D yang nempel pada huruf/angka sekarang terbaca SAH.
-    if re.search(r'\+\s*[CD]\b', t_upper): return True
+    if re.search(r'(?<!\w)\+\s*[CD]\b', t_upper): return True
     return False
 
 def ekstrak_pibc_lab(teks_filtered):
@@ -385,7 +384,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             if is_diabaikan:
                 df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
-                df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str if 'Dyeing STI' not in g_norm else ''
+                df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
                 continue
 
             if 'Dyeing STI' in g_norm and not ada_item_non_tbb_sti:
@@ -400,32 +399,33 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                          error_variants.append(res)
 
             if is_first_row:
-                if not grup_punya_pibc:
-                    df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
-                else:
-                    miss_pibc = [p for p in pibc_list_grup if sanitize_key(p) not in pibc_available_keys]
-                    miss_pg = [p for p in pibc_list_grup if sanitize_key(p) not in pg_available_keys]
-                    
-                    if not miss_pibc and not miss_pg:
-                        df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada'
-                    elif miss_pibc and miss_pg:
-                        if set(miss_pibc) == set(pibc_list_grup) and set(miss_pg) == set(pibc_list_grup):
-                            df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC & PG Tidak Ada'
-                        else:
-                            gabung_miss = list(dict.fromkeys(miss_pibc + miss_pg))
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(gabung_miss)}] di Master PIBC & PG Tidak Ada)'
-                    elif miss_pibc:
-                        if set(miss_pibc) == set(pibc_list_grup):
-                            df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC Tidak Ada'
-                        else:
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pibc)}] di Master PIBC Tidak Ada)'
-                    elif miss_pg:
-                        if set(miss_pg) == set(pibc_list_grup):
-                            df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PG Tidak Ada'
-                        else:
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
+                if 'Dyeing STI' not in g_norm and 'Softcone' not in g_norm:
+                    if not grup_punya_pibc:
+                        df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
+                    else:
+                        miss_pibc = [p for p in pibc_list_grup if sanitize_key(p) not in pibc_available_keys]
+                        miss_pg = [p for p in pibc_list_grup if sanitize_key(p) not in pg_available_keys]
+                        
+                        if not miss_pibc and not miss_pg:
+                            df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada'
+                        elif miss_pibc and miss_pg:
+                            if set(miss_pibc) == set(pibc_list_grup) and set(miss_pg) == set(pibc_list_grup):
+                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC & PG Tidak Ada'
+                            else:
+                                gabung_miss = list(dict.fromkeys(miss_pibc + miss_pg))
+                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(gabung_miss)}] di Master PIBC & PG Tidak Ada)'
+                        elif miss_pibc:
+                            if set(miss_pibc) == set(pibc_list_grup):
+                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC Tidak Ada'
+                            else:
+                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pibc)}] di Master PIBC Tidak Ada)'
+                        elif miss_pg:
+                            if set(miss_pg) == set(pibc_list_grup):
+                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PG Tidak Ada'
+                            else:
+                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
 
-            df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('Dyeing STI' in g_norm and not kode_item.startswith('TBB')) else ('' if 'Dyeing STI' in g_norm else rincian_benang_str)
+            df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             tg = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
@@ -445,11 +445,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
-                        df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                        if 'Dyeing STI' not in g_norm: df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
 
-                    if len(pibc_list_grup) > 0:
+                    if len(pibc_list_grup) > 0 and 'Dyeing STI' not in g_norm:
                         qty_pibc_total = 0.0
                         qty_pg_total = 0.0
                         found_in_pibc = False
@@ -506,17 +506,27 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     obat_rendered_set.add(k_item_upper)
 
             is_first_row = False
+            
+            # PENGOSONGAN MUTLAK KOLOM UNTUK GUDANG DYEING STI
+            if 'Dyeing STI' in g_norm:
+                df_mb.at[idx, 'Info Celup Gabung'] = ''
+                df_mb.at[idx, 'Status PIBC'] = ''
+                df_mb.at[idx, 'Rincian Benang'] = ''
+                df_mb.at[idx, 'Cek Variant'] = ''
+                df_mb.at[idx, 'Ext_PIBC'] = ''
 
         idx_first = df_sub.index[0]
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
-        if ('Dyeing STI' in gudang_group_norm and not ada_item_non_tbb_sti) or is_softcone_group:
+        if 'Dyeing STI' in gudang_group_norm or is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = '' 
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
             
         if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
             df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
+        elif 'Dyeing STI' in gudang_group_norm:
+            df_mb.at[idx_first, 'Cek Variant'] = ''
             
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
