@@ -9,6 +9,10 @@ BARIS_DIABAIKAN = [
 ]
 
 def sanitize_key(k):
+    """
+    Sapu bersih spasi dan karakter gaib.
+    MENGIZINKAN: Huruf, Angka, Titik, Pagar (#), dan Plus (+).
+    """
     if not k: return ""
     k = re.sub(r'[^A-Z0-9\.#\+]', '', str(k).upper())
     return k.replace('PIBC', '')
@@ -44,6 +48,9 @@ def is_item_benang(kode_item, gudang=""):
     if k_upper.startswith('TBB'): return True
     return False
 
+# =============================================================================
+# LOGIKA FILTER PLUS & EKSTRAKSI PIBC ISOLASI KETAT
+# =============================================================================
 def filter_plus(teks):
     if pd.isna(teks): return ""
     teks = str(teks)
@@ -65,43 +72,54 @@ def is_to_reprocess(teks, gudang):
 def ekstrak_pibc_lab(teks):
     teks_str = str(teks)
     parts = re.split(r'\bREPROCESS\b', teks_str, flags=re.IGNORECASE)
+    
     if len(parts) > 1:
         bagian_setelah = parts[-1]
         hasil = re.findall(POLA_PIBC, bagian_setelah, re.IGNORECASE)
-        if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
+        if hasil:
+            return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
+        
         bagian_sebelum = parts[0]
         hasil = re.findall(POLA_PIBC, bagian_sebelum, re.IGNORECASE)
-        if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
+        if hasil:
+            return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     return []
 
 def ekstrak_pibc_to(teks):
     teks_str = str(teks)
     hasil = []
+    
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
     if chunks_kurung:
         for chunk in chunks_kurung:
             kodes = re.findall(POLA_PIBC, chunk, re.IGNORECASE)
             hasil.extend(kodes)
+            
     if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
             bagian_setelah_to = parts[-1]
             kodes = re.findall(POLA_PIBC, bagian_setelah_to, re.IGNORECASE)
             hasil.extend(kodes)
+            
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
 def ekstrak_semua_pibc(teks):
     teks_str = str(teks)
     hasil = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
-    if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
+    if hasil:
+        return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     return []
 
 def dapatkan_pibc_baris(teks, gudang):
     if not teks.strip(): return []
     g_norm = normalisasi_gudang(gudang)
-    if 'Lab & RnD' in g_norm and 'REPROCESS' in str(teks).upper(): return ekstrak_pibc_lab(teks)
-    if is_to_reprocess(teks, gudang): return ekstrak_pibc_to(teks)
+    if 'Lab & RnD' in g_norm and 'REPROCESS' in str(teks).upper():
+        return ekstrak_pibc_lab(teks)
+    if is_to_reprocess(teks, gudang):
+        return ekstrak_pibc_to(teks)
     return ekstrak_semua_pibc(teks)
+# =============================================================================
 
 def siapkan_kolom_standar(df_mb):
     col_gudang_mb = cari_kolom_akurat(df_mb, ['GUDANG'])
@@ -159,7 +177,7 @@ def siapkan_kolom_standar(df_mb):
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
 
-    # Penampung PIBC yang tersedia di master untuk validasi Status PIBC
+    # Penampung PIBC (Buku Tamu) untuk validasi Status PIBC Eksistensi Dokumen
     pibc_available_keys = set()
     pg_available_keys = set()
 
@@ -177,7 +195,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_kode = sanitize_key(r[col_kode_obat]) if col_kode_obat and pd.notna(r[col_kode_obat]) else ""
                 k_nama = sanitize_key(r[col_nama_obat]) if col_nama_obat and pd.notna(r[col_nama_obat]) else ""
                 
-                pibc_available_keys.add(k_dyelot)
+                if k_dyelot: pibc_available_keys.add(k_dyelot)
+                
                 if k_kode: pibc_lookup[(k_dyelot, k_kode)] = round(pibc_lookup.get((k_dyelot, k_kode), 0.0) + val_act, 3)
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = round(pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act, 3)
 
@@ -192,23 +211,28 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if not raw_pibc or raw_pibc.lower() == 'nan': continue
                 
                 pibc_ext_list = ekstrak_semua_pibc(raw_pibc)
-                if not pibc_ext_list: continue
+                for p_raw in pibc_ext_list:
+                    k_ket = sanitize_key(p_raw)
+                    if k_ket: pg_available_keys.add(k_ket)
                 
-                k_ket = sanitize_key(pibc_ext_list[0])
+                if not pibc_ext_list: continue
+                k_ket_utama = sanitize_key(pibc_ext_list[0])
                 k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
                 k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
                 
-                pg_available_keys.add(k_ket)
-                if k_kode: pg_lookup[(k_ket, k_kode)] = round(pg_lookup.get((k_ket, k_kode), 0.0) + val_msk, 3)
-                if k_nama: pg_lookup[(k_ket, k_nama)] = round(pg_lookup.get((k_ket, k_nama), 0.0) + val_msk, 3)
+                if k_kode: pg_lookup[(k_ket_utama, k_kode)] = round(pg_lookup.get((k_ket_utama, k_kode), 0.0) + val_msk, 3)
+                if k_nama: pg_lookup[(k_ket_utama, k_nama)] = round(pg_lookup.get((k_ket_utama, k_nama), 0.0) + val_msk, 3)
 
+    # Ekstrak PIBC MB - Isolasi Kolom Dipertahankan Penuh
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
+        
         ket1 = filter_plus(row.get('Keterangan', ''))
         ket2 = filter_plus(row.get('Keterangan Lain', ''))
         
         pibc_list1 = dapatkan_pibc_baris(ket1, gudang)
         pibc_list2 = dapatkan_pibc_baris(ket2, gudang)
+        
         pibc_list = list(dict.fromkeys(pibc_list1 + pibc_list2))
         
         if pibc_list: 
@@ -327,7 +351,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 is_first_row = False
                 continue
 
-            # LOGIKA SMART STATUS PIBC
+            # =============================================================================
+            # LOGIKA STATUS PIBC CERDAS (BUKU TAMU & VALIDASI SILANG)
+            # =============================================================================
             if is_first_row:
                 if not grup_punya_pibc:
                     df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
@@ -338,21 +364,22 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     if not miss_pibc and not miss_pg:
                         df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada'
                     elif miss_pibc and miss_pg:
-                        if len(pibc_list_grup) == 1 or (miss_pibc == miss_pg == pibc_list_grup):
+                        if set(miss_pibc) == set(pibc_list_grup) and set(miss_pg) == set(pibc_list_grup):
                             df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC & PG Tidak Ada'
                         else:
-                            gabung_miss = list(set(miss_pibc + miss_pg))
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun {", ".join(gabung_miss)} di Master PIBC & PG Tidak Ada)'
+                            gabung_miss = list(dict.fromkeys(miss_pibc + miss_pg))
+                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(gabung_miss)}] di Master PIBC & PG Tidak Ada)'
                     elif miss_pibc:
-                        if len(pibc_list_grup) == 1 or miss_pibc == pibc_list_grup:
+                        if set(miss_pibc) == set(pibc_list_grup):
                             df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC Tidak Ada'
                         else:
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun {", ".join(miss_pibc)} di Master PIBC Tidak Ada)'
+                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pibc)}] di Master PIBC Tidak Ada)'
                     elif miss_pg:
-                        if len(pibc_list_grup) == 1 or miss_pg == pibc_list_grup:
+                        if set(miss_pg) == set(pibc_list_grup):
                             df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PG Tidak Ada'
                         else:
-                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun {", ".join(miss_pg)} di Master PG Tidak Ada)'
+                            df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
+            # =============================================================================
 
             df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('Dyeing STI' in g_norm and not kode_item.startswith('TBB')) else ('' if 'Dyeing STI' in g_norm else rincian_benang_str)
 
@@ -364,6 +391,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if not benang_status_rendered:
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
+
                     if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     benang_status_rendered = True
@@ -389,6 +417,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         
                         for pibc_raw in pibc_list_grup:
                             kp_san = sanitize_key(pibc_raw)
+                            
                             if (kp_san, k_kode) in pibc_lookup:
                                 qty_pibc_total += pibc_lookup[(kp_san, k_kode)]
                                 found_in_pibc = True
@@ -411,6 +440,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             df_mb.at[idx, 'Qty PIBC'] = qty_pibc_total
                             sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
+                            
                         if found_in_pg:
                             qty_pg_total = round(qty_pg_total, 3)
                             df_mb.at[idx, 'Qty PG'] = qty_pg_total
