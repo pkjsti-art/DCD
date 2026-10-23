@@ -54,16 +54,14 @@ def filter_plus(teks):
 
 POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
 
-def is_to_reprocess(teks, gudang):
-    g_norm = normalisasi_gudang(gudang)
-    if 'Mesin Dyeing' not in g_norm and 'Dyeing STI' not in g_norm:
-        return False
-    t_upper = str(teks).upper()
+# Gembok Gudang dilepas. Deteksi TO berlaku universal di seluruh teks mentah.
+def is_to_reprocess(teks_raw):
+    t_upper = str(teks_raw).upper()
     keywords = ['REPROCESS', '+D', '+C', '+ D', '+ C']
     return any(kw in t_upper for kw in keywords)
 
-def ekstrak_pibc_lab(teks):
-    teks_str = str(teks)
+def ekstrak_pibc_lab(teks_filtered):
+    teks_str = str(teks_filtered)
     parts = re.split(r'\bREPROCESS\b', teks_str, flags=re.IGNORECASE)
     if len(parts) > 1:
         bagian_setelah = parts[-1]
@@ -74,8 +72,8 @@ def ekstrak_pibc_lab(teks):
         if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     return []
 
-def ekstrak_pibc_to(teks):
-    teks_str = str(teks)
+def ekstrak_pibc_to(teks_filtered):
+    teks_str = str(teks_filtered)
     hasil = []
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
     if chunks_kurung:
@@ -90,21 +88,22 @@ def ekstrak_pibc_to(teks):
             hasil.extend(kodes)
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
-def ekstrak_semua_pibc(teks):
-    teks_str = str(teks)
+def ekstrak_semua_pibc(teks_filtered):
+    teks_str = str(teks_filtered)
     hasil = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
     if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     return []
 
-def dapatkan_pibc_baris(teks, gudang):
-    if not teks.strip(): return []
+# Sistem Dual-Text: Teks Mentah untuk Deteksi Indikator, Teks Filtered untuk Ekstrak Kode
+def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
+    if not str(teks_filtered).strip() and not str(teks_raw).strip(): return []
     g_norm = normalisasi_gudang(gudang)
-    if 'Lab & RnD' in g_norm and 'REPROCESS' in str(teks).upper(): return ekstrak_pibc_lab(teks)
-    if is_to_reprocess(teks, gudang): return ekstrak_pibc_to(teks)
-    return ekstrak_semua_pibc(teks)
+    if 'Lab & RnD' in g_norm and 'REPROCESS' in str(teks_raw).upper(): return ekstrak_pibc_lab(teks_filtered)
+    if is_to_reprocess(teks_raw): return ekstrak_pibc_to(teks_filtered)
+    return ekstrak_semua_pibc(teks_filtered)
 
 # =============================================================================
-# LOGIKA SMART DETECTIVE VARIANT (Cek Semua Baris & Indikasi Keyword)
+# LOGIKA SMART DETECTIVE VARIANT
 # =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
@@ -122,7 +121,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051')) and kb.startswith('TWP.666'): return 'CLEAN'
             if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
             
-            # Smart Detective lapis 2 (Cek jika ternyata ini aturan TO yang kurang keyword)
             if (ki.startswith('TWP.100') and kb.startswith('TWP.100')) or (ki.startswith('TWP.90') and kb.startswith('TWP.90')):
                 return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
             return base_err
@@ -142,12 +140,10 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
                 if 'RND' in tg: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
             
-            # ATURAN BARU DITAMBAHKAN DI SINI
             if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
                 if 'RND' in tg: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
                 
-            # Smart Detective lapis 2
             if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
                 if 'LAB' in tg: return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
                 return f"INDIKASI TO & LAB (Kurang Keyword) : {base_err}"
@@ -267,11 +263,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
-        ket1 = filter_plus(row.get('Keterangan', ''))
-        ket2 = filter_plus(row.get('Keterangan Lain', ''))
+        ket1_raw = str(row.get('Keterangan', ''))
+        ket2_raw = str(row.get('Keterangan Lain', ''))
         
-        pibc_list1 = dapatkan_pibc_baris(ket1, gudang)
-        pibc_list2 = dapatkan_pibc_baris(ket2, gudang)
+        ket1 = filter_plus(ket1_raw)
+        ket2 = filter_plus(ket2_raw)
+        
+        # Meneruskan Teks Mentah Asli untuk Deteksi Keyword TO yang Akurat
+        pibc_list1 = dapatkan_pibc_baris(ket1, gudang, ket1_raw)
+        pibc_list2 = dapatkan_pibc_baris(ket2, gudang, ket2_raw)
+        
         pibc_list = list(dict.fromkeys(pibc_list1 + pibc_list2))
         
         if pibc_list: 
@@ -350,7 +351,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     ada_item_non_tbb_sti = True
 
         gudang_group_norm = normalisasi_gudang(gudang_group)
-        is_to_group = is_to_reprocess(teks_gab_group, gudang_group_norm)
+        is_to_group = is_to_reprocess(teks_gab_group)
         
         rincian_benang_str = ", ".join(rincian_benang_list)
         is_celup_gabung = False
@@ -391,7 +392,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 is_first_row = False
                 continue
 
-            # Kumpulkan Cek Variant semua baris benang
             if benang_flag and not is_diabaikan:
                 if 'Mesin Dyeing' in g_norm or 'Lab & RnD' in g_norm:
                      res = cek_kombinasi_variant(kode_item, row.get('Kode Barang Jadi', ''), is_to_group, teks_gab_group, g_norm)
