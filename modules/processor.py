@@ -57,8 +57,8 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    # Mengunci indikator agar tidak membaca + CONES atau + DYESTUFF sebagai + C / + D
-    if re.search(r'\+\s*[CD]\b', t_upper): return True
+    # PERBAIKAN: (?<!\w) memastikan +C tidak dibaca jika menempel pada kata (contoh: P7200A+C)
+    if re.search(r'(?<!\w)\+\s*[CD]\b', t_upper): return True
     return False
 
 def ekstrak_pibc_lab(teks_filtered):
@@ -103,7 +103,7 @@ def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     return ekstrak_semua_pibc(teks_filtered)
 
 # =============================================================================
-# LOGIKA SMART DETECTIVE VARIANT (Versi Final Aturan)
+# LOGIKA SMART DETECTIVE VARIANT
 # =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
@@ -117,7 +117,7 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     has_rnd = bool(re.search(r'\bRND\b', tg))
     has_lab = bool(re.search(r'\bLAB\b', tg))
     
-    # Aturan Universal: TWP.00 ke TWP.00 selalu benar, TO maupun Non-TO
+    # Aturan Universal HANYA untuk TWP.00
     if ki.startswith('TWP.00') and kb.startswith('TWP.00'):
         return 'CLEAN'
     
