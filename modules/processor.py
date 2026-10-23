@@ -54,7 +54,6 @@ def filter_plus(teks):
 
 POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
 
-# Gembok Gudang dilepas. Deteksi TO berlaku universal di seluruh teks mentah.
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     keywords = ['REPROCESS', '+D', '+C', '+ D', '+ C']
@@ -94,7 +93,6 @@ def ekstrak_semua_pibc(teks_filtered):
     if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     return []
 
-# Sistem Dual-Text: Teks Mentah untuk Deteksi Indikator, Teks Filtered untuk Ekstrak Kode
 def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     if not str(teks_filtered).strip() and not str(teks_raw).strip(): return []
     g_norm = normalisasi_gudang(gudang)
@@ -103,7 +101,7 @@ def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     return ekstrak_semua_pibc(teks_filtered)
 
 # =============================================================================
-# LOGIKA SMART DETECTIVE VARIANT
+# LOGIKA SMART DETECTIVE VARIANT (Versi Pembaruan Aturan)
 # =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
@@ -120,9 +118,16 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if ki.startswith(('TWP.100', 'TWP.90', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
             if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051')) and kb.startswith('TWP.666'): return 'CLEAN'
             if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
+            if ki.startswith('TWP.00') and kb.startswith('TWP.00'): return 'CLEAN'
             
-            if (ki.startswith('TWP.100') and kb.startswith('TWP.100')) or (ki.startswith('TWP.90') and kb.startswith('TWP.90')):
-                return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
+            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+                if 'RETUR' in tg: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' : {base_err}"
+            
+            if ki.startswith('TWP.90') and kb.startswith('TWP.90'):
+                if 'RETUR' in tg: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' : {base_err}"
+                
             return base_err
         else:
             if ki.startswith('TWP.100') and kb.startswith('TWP.100'): return 'CLEAN'
@@ -131,25 +136,28 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             
     elif 'Lab & RnD' in gudang_norm:
         if not is_to:
-            if ki.startswith(('TWP.050', 'MWP')) and kb.startswith('TWP.999'): return 'CLEAN'
+            if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith('TWP.999'): return 'CLEAN'
+            if ki.startswith('TWP.00') and kb.startswith('TWP.00'): return 'CLEAN'
             if ki.startswith('TWP.999') and kb.startswith('TWP.400'): return 'CLEAN'
             if ki.startswith('TWP.400') and kb.startswith('TWP.400'): return 'CLEAN'
             if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100')) and kb.startswith('TWP.666'): return 'CLEAN'
             
-            if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
-                if 'RND' in tg: return 'CLEAN'
-                return f"KURANG KEYWORD 'RND' : {base_err}"
+            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+                if 'RETUR' in tg: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'RND' : {base_err}"
+                
+            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
+                if 'RETUR' in tg: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'LAB' : {base_err}"
             
             if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
                 if 'RND' in tg: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
                 
-            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-                if 'LAB' in tg: return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
-                return f"INDIKASI TO & LAB (Kurang Keyword) : {base_err}"
-            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if 'RND' in tg: return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
-                return f"INDIKASI TO & RND (Kurang Keyword) : {base_err}"
+            if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
+                if 'RND' in tg: return 'CLEAN'
+                return f"KURANG KEYWORD 'RND' : {base_err}"
+            
             return base_err
         else:
             if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
@@ -161,6 +169,7 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             return base_err
             
     return 'CLEAN'
+# =============================================================================
 
 def siapkan_kolom_standar(df_mb):
     col_gudang_mb = cari_kolom_akurat(df_mb, ['GUDANG'])
@@ -269,7 +278,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         ket1 = filter_plus(ket1_raw)
         ket2 = filter_plus(ket2_raw)
         
-        # Meneruskan Teks Mentah Asli untuk Deteksi Keyword TO yang Akurat
         pibc_list1 = dapatkan_pibc_baris(ket1, gudang, ket1_raw)
         pibc_list2 = dapatkan_pibc_baris(ket2, gudang, ket2_raw)
         
