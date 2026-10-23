@@ -103,6 +103,64 @@ def dapatkan_pibc_baris(teks, gudang):
     if is_to_reprocess(teks, gudang): return ekstrak_pibc_to(teks)
     return ekstrak_semua_pibc(teks)
 
+# =============================================================================
+# LOGIKA SMART DETECTIVE VARIANT (Cek Semua Baris & Indikasi Keyword)
+# =============================================================================
+def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
+    ki = str(ki_full).strip().upper()
+    kb = str(kb_full).strip().upper()
+    tg = str(teks_gab).upper()
+    
+    if not ki: return 'CLEAN'
+    base_err = f"{ki_full} -> {kb_full}"
+    
+    if 'Mesin Dyeing' in gudang_norm:
+        if not is_to:
+            if ki.startswith(('TWP.050', 'TWP.051', 'MWP', 'TBM', 'TWP.400')) and kb.startswith('TWP.100'): return 'CLEAN'
+            if ki.startswith('TWP.051') and kb.startswith('TWP.051'): return 'CLEAN'
+            if ki.startswith(('TWP.100', 'TWP.90', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
+            if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051')) and kb.startswith('TWP.666'): return 'CLEAN'
+            if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
+            
+            # Smart Detective lapis 2 (Cek jika ternyata ini aturan TO yang kurang keyword)
+            if (ki.startswith('TWP.100') and kb.startswith('TWP.100')) or (ki.startswith('TWP.90') and kb.startswith('TWP.90')):
+                return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
+            return base_err
+        else:
+            if ki.startswith('TWP.100') and kb.startswith('TWP.100'): return 'CLEAN'
+            if ki.startswith('TWP.90') and kb.startswith('TWP.90'): return 'CLEAN'
+            return base_err
+            
+    elif 'Lab & RnD' in gudang_norm:
+        if not is_to:
+            if ki.startswith(('TWP.050', 'MWP')) and kb.startswith('TWP.999'): return 'CLEAN'
+            if ki.startswith('TWP.999') and kb.startswith('TWP.400'): return 'CLEAN'
+            if ki.startswith('TWP.400') and kb.startswith('TWP.400'): return 'CLEAN'
+            if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100')) and kb.startswith('TWP.666'): return 'CLEAN'
+            
+            if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
+                if 'RND' in tg: return 'CLEAN'
+                return f"KURANG KEYWORD 'RND' : {base_err}"
+                
+            # Smart Detective lapis 2
+            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
+                if 'LAB' in tg: return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
+                return f"INDIKASI TO & LAB (Kurang Keyword) : {base_err}"
+            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+                if 'RND' in tg: return f"INDIKASI TO (Kurang Keyword Reprocess/+C/+D) : {base_err}"
+                return f"INDIKASI TO & RND (Kurang Keyword) : {base_err}"
+            return base_err
+        else:
+            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
+                if 'LAB' in tg: return 'CLEAN'
+                return f"KURANG KEYWORD 'LAB' : {base_err}"
+            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+                if 'RND' in tg: return 'CLEAN'
+                return f"KURANG KEYWORD 'RND' : {base_err}"
+            return base_err
+            
+    return 'CLEAN'
+
 def siapkan_kolom_standar(df_mb):
     col_gudang_mb = cari_kolom_akurat(df_mb, ['GUDANG'])
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
@@ -161,8 +219,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
     pibc_available_keys = set()
     pg_available_keys = set()
-
     pibc_lookup = {}
+    
     if df_pibc is not None and not df_pibc.empty:
         col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
         col_act = cari_kolom_akurat(df_pibc, ['ACTUAL', 'QTY', 'JUMLAH'])
@@ -250,10 +308,17 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         rincian_benang_list = []
         item_qty_dalam_transaksi = {} 
         
+        teks_gab_group = ""
+        gudang_group = ""
+        
         for idx in df_sub.index:
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
-            gudang = str(row.get('Gudang', ''))
+            gudang_str = str(row.get('Gudang', ''))
+            if not gudang_group and gudang_str.strip():
+                gudang_group = gudang_str.strip()
+            
+            teks_gab_group += " " + str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
             
             if not grup_punya_pibc:
                 kp_l = row.get('Ext_PIBC_List')
@@ -265,7 +330,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             if isinstance(val_target, (int, float)) and val_target > 0 and target_gr_utama_grup == 0.0:
                 target_gr_utama_grup = round(float(val_target), 3)
 
-            if is_item_benang(kode_item, gudang):
+            if is_item_benang(kode_item, gudang_str):
                 val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                 total_bb_benang_grup = round(total_bb_benang_grup + val_bb, 3)
                 if kode_item not in rincian_benang_list: rincian_benang_list.append(kode_item)
@@ -275,10 +340,13 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     k_item_upper = kode_item.upper()
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
 
-            if 'Dyeing STI' in normalisasi_gudang(gudang):
+            if 'Dyeing STI' in normalisasi_gudang(gudang_str):
                 if not (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper()) and kode_item and not kode_item.startswith('TBB'):
                     ada_item_non_tbb_sti = True
 
+        gudang_group_norm = normalisasi_gudang(gudang_group)
+        is_to_group = is_to_reprocess(teks_gab_group, gudang_group_norm)
+        
         rincian_benang_str = ", ".join(rincian_benang_list)
         is_celup_gabung = False
         pasangan_str = ""
@@ -295,6 +363,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         benang_status_rendered = False
         obat_rendered_set = set()
         status_cek_list = []
+        error_variants = []
 
         for idx in df_sub.index:
             row = df_mb.loc[idx]
@@ -306,16 +375,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
-            df_mb.at[idx, 'Crosscheck Qty'] = ''
-            df_mb.at[idx, 'Qty PIBC'] = ''
-            df_mb.at[idx, 'Qty PG'] = ''
-            df_mb.at[idx, 'Selisih Benang (GR)'] = ''
-            df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
-            df_mb.at[idx, 'Selisih PG (GR)'] = ''
-            df_mb.at[idx, 'Status PIBC'] = ''
-            df_mb.at[idx, 'Info Celup Gabung'] = ''
-            df_mb.at[idx, 'Cek Variant'] = ''
-
             if is_diabaikan:
                 df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
                 df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
@@ -324,51 +383,15 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             if 'Dyeing STI' in g_norm and not ada_item_non_tbb_sti:
                 df_mb.at[idx, 'Rincian Benang'] = ''
-                df_mb.at[idx, 'Cek Variant'] = ''
                 is_first_row = False
                 continue
 
-            teks_gab = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
-            
-            # =============================================================================
-            # LOGIKA CEK VARIANT KETAT (Berdasarkan Matriks Pasangan Kode & Indikator TO)
-            # =============================================================================
-            if is_first_row:
-                kode_bj_raw = str(row.get('Kode Barang Jadi', '')).strip()
-                ki = kode_item.strip().upper()
-                kb = kode_bj_raw.upper()
-                tg = teks_gab.upper()
-                
-                if 'Mesin Dyeing' in g_norm:
-                    is_valid = False
-                    is_to = is_to_reprocess(teks_gab, gudang)
-                    if not is_to:
-                        if ki.startswith(('TWP.050', 'TWP.051', 'MWP', 'TBM', 'TWP.400')) and kb.startswith('TWP.100'): is_valid = True
-                        elif ki.startswith('TWP.051') and kb.startswith('TWP.051'): is_valid = True
-                        elif ki.startswith(('TWP.100', 'TWP.90', 'TWP.400')) and kb.startswith('TWP.400'): is_valid = True
-                        elif ki.startswith(('TWP.100', 'TWP.90', 'TWP.051')) and kb.startswith('TWP.666'): is_valid = True
-                        elif ki.startswith('TWP.050') and kb.startswith('TWP.90'): is_valid = True
-                    else:
-                        if ki.startswith('TWP.100') and kb.startswith('TWP.100'): is_valid = True
-                        elif ki.startswith('TWP.90') and kb.startswith('TWP.90'): is_valid = True
-                        
-                    df_mb.at[idx, 'Cek Variant'] = 'CLEAN' if is_valid else f"{kode_item} | {kode_bj_raw}"
-                    
-                elif 'Lab & RnD' in g_norm:
-                    is_valid = False
-                    is_to = is_to_reprocess(teks_gab, gudang)
-                    if not is_to:
-                        if ki.startswith(('TWP.050', 'MWP')) and kb.startswith('TWP.999'): is_valid = True
-                        elif ki.startswith('TWP.999') and kb.startswith('TWP.400'): is_valid = True
-                        elif ki.startswith('TWP.400') and kb.startswith('TWP.400'): is_valid = True
-                        elif ki.startswith(('TWP.999', 'TWP.051', 'TWP.100')) and kb.startswith('TWP.666'): is_valid = True
-                        elif ki.startswith('TWP.100') and kb.startswith('TWP.400') and 'RND' in tg: is_valid = True
-                    else:
-                        if ki.startswith('TWP.999') and kb.startswith('TWP.999') and 'LAB' in tg: is_valid = True
-                        elif ki.startswith('TWP.100') and kb.startswith('TWP.100') and 'RND' in tg: is_valid = True
-                        
-                    df_mb.at[idx, 'Cek Variant'] = 'CLEAN' if is_valid else f"{kode_item} | {kode_bj_raw}"
-            # =============================================================================
+            # Kumpulkan Cek Variant semua baris benang
+            if benang_flag and not is_diabaikan:
+                if 'Mesin Dyeing' in g_norm or 'Lab & RnD' in g_norm:
+                     res = cek_kombinasi_variant(kode_item, row.get('Kode Barang Jadi', ''), is_to_group, teks_gab_group, g_norm)
+                     if res != 'CLEAN' and res not in error_variants:
+                         error_variants.append(res)
 
             if is_first_row:
                 if not grup_punya_pibc:
@@ -399,7 +422,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             df_mb.at[idx, 'Rincian Benang'] = 'BUKAN BENANG' if ('Dyeing STI' in g_norm and not kode_item.startswith('TBB')) else ('' if 'Dyeing STI' in g_norm else rincian_benang_str)
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
-            ada_keyword_selisih = any(kw in nama_brg_jdi or kw in tg for kw in keyword_selisih)
+            tg = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
+            ada_keyword_selisih = any(kw in nama_brg_jdi or kw in tg.upper() for kw in keyword_selisih)
 
             if benang_flag:
                 if not benang_status_rendered:
@@ -478,19 +502,15 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             is_first_row = False
 
         idx_first = df_sub.index[0]
-        gudang_group = ""
-        for i in df_sub.index:
-            g = str(df_mb.loc[i].get('Gudang', '')).strip()
-            if g != "":
-                gudang_group = g
-                break
-        gudang_group_norm = normalisasi_gudang(gudang_group)
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
         if ('Dyeing STI' in gudang_group_norm and not ada_item_non_tbb_sti) or is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = '' 
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
+            
+        if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
+            df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
             
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
