@@ -168,6 +168,19 @@ def siapkan_kolom_standar(df_mb):
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
     elif not col_gudang_mb: df_mb['Gudang'] = ''
 
+    # =========================================================================
+    # PERBAIKAN MERGED CELLS: Forward Fill untuk menyalin Gudang ke baris kosong
+    # =========================================================================
+    last_gudang = ""
+    for idx in df_mb.index:
+        g = str(df_mb.at[idx, 'Gudang']).strip()
+        if g.lower() == 'nan' or g.lower() == 'none': g = ''
+        if g != "":
+            last_gudang = g
+        else:
+            df_mb.at[idx, 'Gudang'] = last_gudang
+    # =========================================================================
+
     col_target_qty, col_target_unit, col_qty, col_unit, col_kode_item = None, None, None, None, None
 
     for col in df_mb.columns:
@@ -507,9 +520,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 
             is_first_row = False
             
-            # PENGOSONGAN MUTLAK KOLOM UNTUK GUDANG DYEING STI
             if 'Dyeing STI' in g_norm:
                 df_mb.at[idx, 'Info Celup Gabung'] = ''
+                df_mb.at[idx, 'Status Cek'] = ''
                 df_mb.at[idx, 'Status PIBC'] = ''
                 df_mb.at[idx, 'Rincian Benang'] = ''
                 df_mb.at[idx, 'Cek Variant'] = ''
