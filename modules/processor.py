@@ -54,10 +54,13 @@ def filter_plus(teks):
 
 POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?|[0-9]{8,}(?:#[A-Za-z0-9]+|-[A-Za-z0-9]+)?)'
 
+# PERBAIKAN BUG: Mencegah "+ CONES" terbaca sebagai "+ C"
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
-    keywords = ['REPROCESS', '+D', '+C', '+ D', '+ C']
-    return any(kw in t_upper for kw in keywords)
+    if 'REPROCESS' in t_upper: return True
+    if re.search(r'\+\s*C(?!\w)', t_upper): return True
+    if re.search(r'\+\s*D(?!\w)', t_upper): return True
+    return False
 
 def ekstrak_pibc_lab(teks_filtered):
     teks_str = str(teks_filtered)
@@ -101,7 +104,7 @@ def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     return ekstrak_semua_pibc(teks_filtered)
 
 # =============================================================================
-# LOGIKA SMART DETECTIVE VARIANT (Versi Pembaruan Aturan)
+# LOGIKA SMART DETECTIVE VARIANT (BEKAS/BKS Ditambahkan)
 # =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
@@ -110,6 +113,12 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     
     if not ki: return 'CLEAN'
     base_err = f"{ki_full} -> {kb_full}"
+    
+    # Detektor Keyword
+    has_retur_dyeing = bool(re.search(r'\b(RETUR|BEKAS|BKS)\b', tg))
+    has_retur_lab = bool(re.search(r'\bRETUR\b', tg))
+    has_rnd = bool(re.search(r'\bRND\b', tg))
+    has_lab = bool(re.search(r'\bLAB\b', tg))
     
     if 'Mesin Dyeing' in gudang_norm:
         if not is_to:
@@ -121,12 +130,12 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if ki.startswith('TWP.00') and kb.startswith('TWP.00'): return 'CLEAN'
             
             if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if 'RETUR' in tg: return 'CLEAN'
-                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' : {base_err}"
+                if has_retur_dyeing: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'BEKAS/BKS' : {base_err}"
             
             if ki.startswith('TWP.90') and kb.startswith('TWP.90'):
-                if 'RETUR' in tg: return 'CLEAN'
-                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' : {base_err}"
+                if has_retur_dyeing: return 'CLEAN'
+                return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'BEKAS/BKS' : {base_err}"
                 
             return base_err
         else:
@@ -143,28 +152,28 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100')) and kb.startswith('TWP.666'): return 'CLEAN'
             
             if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if 'RETUR' in tg: return 'CLEAN'
+                if has_retur_lab: return 'CLEAN'
                 return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'RND' : {base_err}"
                 
             if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-                if 'RETUR' in tg: return 'CLEAN'
+                if has_retur_lab: return 'CLEAN'
                 return f"INDIKASI TO / KURANG KEYWORD 'RETUR' ATAU 'LAB' : {base_err}"
             
             if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
-                if 'RND' in tg: return 'CLEAN'
+                if has_rnd: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
                 
             if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
-                if 'RND' in tg: return 'CLEAN'
+                if has_rnd: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
             
             return base_err
         else:
             if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-                if 'LAB' in tg: return 'CLEAN'
+                if has_lab: return 'CLEAN'
                 return f"KURANG KEYWORD 'LAB' : {base_err}"
             if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if 'RND' in tg: return 'CLEAN'
+                if has_rnd: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
             return base_err
             
