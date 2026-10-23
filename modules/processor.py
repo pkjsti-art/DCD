@@ -141,6 +141,11 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
                 if 'RND' in tg: return 'CLEAN'
                 return f"KURANG KEYWORD 'RND' : {base_err}"
+            
+            # ATURAN BARU DITAMBAHKAN DI SINI
+            if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
+                if 'RND' in tg: return 'CLEAN'
+                return f"KURANG KEYWORD 'RND' : {base_err}"
                 
             # Smart Detective lapis 2
             if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
