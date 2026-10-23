@@ -323,7 +323,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         pibc_list_grup = []
         target_gr_utama_grup = 0.0
         total_bb_benang_grup = 0.0
-        ada_item_non_tbb_sti = False
         rincian_benang_list = []
         item_qty_dalam_transaksi = {} 
         
@@ -359,10 +358,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     k_item_upper = kode_item.upper()
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
 
-            if 'Dyeing STI' in normalisasi_gudang(gudang_str):
-                if not (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper()) and kode_item and not kode_item.startswith('TBB'):
-                    ada_item_non_tbb_sti = True
-
         gudang_group_norm = normalisasi_gudang(gudang_group)
         is_to_group = is_to_reprocess(teks_gab_group)
         
@@ -388,9 +383,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             row = df_mb.loc[idx]
             kode_item = str(row.get('Kode Item', '')).strip()
             nama_item = str(row.get('Nama Item', '')).strip()
-            gudang = str(row.get('Gudang', ''))
-            g_norm = normalisasi_gudang(gudang)
-            benang_flag = is_item_benang(kode_item, gudang)
+            g_norm = gudang_group_norm
+            benang_flag = is_item_benang(kode_item, g_norm)
 
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
@@ -400,19 +394,52 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
                 continue
 
-            if 'Dyeing STI' in g_norm and not ada_item_non_tbb_sti:
+            # =========================================================================
+            # POTONG KOMPAS (BYPASS) KHUSUS GUDANG DYEING STI
+            # =========================================================================
+            if 'Dyeing STI' in g_norm:
+                if kode_item.upper().startswith('TBB'):
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = ''
+                    df_mb.at[idx, 'Crosscheck Qty'] = ''
+                else:
+                    val_target_sti = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
+                    val_bb_sti = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                    selisih_sti = round(val_bb_sti - val_target_sti, 3)
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_sti
+                    
+                    nama_brg_jdi_sti = str(row.get('Nama Barang Jadi', '')).upper()
+                    tg_sti = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
+                    ada_keyword_selisih_sti = any(kw in nama_brg_jdi_sti or kw in tg_sti.upper() for kw in keyword_selisih)
+                    
+                    if abs(selisih_sti) <= 0.01:
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                    else:
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
+                
+                # Kosongkan secara paksa dan mutlak
+                df_mb.at[idx, 'Qty PIBC'] = ''
+                df_mb.at[idx, 'Qty PG'] = ''
+                df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
+                df_mb.at[idx, 'Selisih PG (GR)'] = ''
+                df_mb.at[idx, 'Info Celup Gabung'] = ''
+                df_mb.at[idx, 'Status Cek'] = ''
+                df_mb.at[idx, 'Status PIBC'] = ''
                 df_mb.at[idx, 'Rincian Benang'] = ''
+                df_mb.at[idx, 'Cek Variant'] = ''
+                df_mb.at[idx, 'Ext_PIBC'] = ''
+                
                 is_first_row = False
                 continue
+            # =========================================================================
 
-            if benang_flag and not is_diabaikan:
+            if benang_flag:
                 if 'Mesin Dyeing' in g_norm or 'Lab & RnD' in g_norm:
                      res = cek_kombinasi_variant(kode_item, row.get('Kode Barang Jadi', ''), is_to_group, teks_gab_group, g_norm)
                      if res != 'CLEAN' and res not in error_variants:
                          error_variants.append(res)
 
             if is_first_row:
-                if 'Dyeing STI' not in g_norm and 'Softcone' not in g_norm:
+                if 'Softcone' not in g_norm:
                     if not grup_punya_pibc:
                         df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
                     else:
@@ -438,7 +465,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             else:
                                 df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
 
-            df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
+            df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             tg = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
@@ -458,11 +485,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
-                        if 'Dyeing STI' not in g_norm: df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                        df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
 
-                    if len(pibc_list_grup) > 0 and 'Dyeing STI' not in g_norm:
+                    if len(pibc_list_grup) > 0:
                         qty_pibc_total = 0.0
                         qty_pg_total = 0.0
                         found_in_pibc = False
@@ -519,27 +546,20 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     obat_rendered_set.add(k_item_upper)
 
             is_first_row = False
-            
-            if 'Dyeing STI' in g_norm:
-                df_mb.at[idx, 'Info Celup Gabung'] = ''
-                df_mb.at[idx, 'Status Cek'] = ''
-                df_mb.at[idx, 'Status PIBC'] = ''
-                df_mb.at[idx, 'Rincian Benang'] = ''
-                df_mb.at[idx, 'Cek Variant'] = ''
-                df_mb.at[idx, 'Ext_PIBC'] = ''
 
         idx_first = df_sub.index[0]
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
-        if 'Dyeing STI' in gudang_group_norm or is_softcone_group:
+        # Jika Dyeing STI, maka dipastikan Status Cek dan Cek Variant tetap kosong mutlak
+        if 'Dyeing STI' in gudang_group_norm:
             df_mb.at[idx_first, 'Status Cek'] = '' 
+            df_mb.at[idx_first, 'Cek Variant'] = ''
+        elif is_softcone_group:
+            df_mb.at[idx_first, 'Status Cek'] = ''
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
-            
-        if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
-            df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
-        elif 'Dyeing STI' in gudang_group_norm:
-            df_mb.at[idx_first, 'Cek Variant'] = ''
+            if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
+                df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
             
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
