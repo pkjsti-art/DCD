@@ -57,7 +57,6 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    # PERBAIKAN: (?<!\w) memastikan +C tidak dibaca jika menempel pada kata (contoh: P7200A+C)
     if re.search(r'(?<!\w)\+\s*[CD]\b', t_upper): return True
     return False
 
@@ -103,7 +102,7 @@ def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     return ekstrak_semua_pibc(teks_filtered)
 
 # =============================================================================
-# LOGIKA SMART DETECTIVE VARIANT
+# LOGIKA JALUR FLEKSIBEL (UNIFIED RULES)
 # =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
@@ -113,68 +112,56 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     if not ki: return 'CLEAN'
     base_err = f"{ki_full} -> {kb_full}"
     
-    has_retur = bool(re.search(r'\b(RETUR|BEKAS|BKS)\b', tg))
+    has_retur_dyeing = bool(re.search(r'\b(RETUR|BEKAS|BKS)\b', tg))
+    has_retur_lab = bool(re.search(r'\bRETUR\b', tg))
     has_rnd = bool(re.search(r'\bRND\b', tg))
     has_lab = bool(re.search(r'\bLAB\b', tg))
     
-    # Aturan Universal HANYA untuk TWP.00
+    # Kelompok Universal (Bebas Hambatan)
     if ki.startswith('TWP.00') and kb.startswith('TWP.00'):
         return 'CLEAN'
     
     if 'Mesin Dyeing' in gudang_norm:
-        if not is_to:
-            if ki.startswith(('TWP.050', 'TWP.051', 'MWP', 'TBM', 'TWP.400')) and kb.startswith('TWP.100'): return 'CLEAN'
-            if ki.startswith('TWP.051') and kb.startswith('TWP.051'): return 'CLEAN'
-            if ki.startswith(('TWP.100', 'TWP.90', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
-            if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051')) and kb.startswith('TWP.666'): return 'CLEAN'
-            if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
+        if ki.startswith(('TWP.050', 'TWP.051', 'MWP', 'TBM', 'TWP.400')) and kb.startswith('TWP.100'): return 'CLEAN'
+        if ki.startswith('TWP.051') and kb.startswith('TWP.051'): return 'CLEAN'
+        if ki.startswith(('TWP.100', 'TWP.90', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
+        if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051', 'TWP.400')) and kb.startswith('TWP.666'): return 'CLEAN'
+        if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
+        
+        # Kelompok Syarat Keyword
+        if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+            if has_retur_dyeing or is_to: return 'CLEAN'
+            return f"KURANG KEYWORD PENJELAS (RETUR / BEKAS / BKS / TO) : {base_err}"
+        
+        if ki.startswith('TWP.90') and kb.startswith('TWP.90'):
+            if has_retur_dyeing or is_to: return 'CLEAN'
+            return f"KURANG KEYWORD PENJELAS (RETUR / BEKAS / BKS / TO) : {base_err}"
             
-            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if has_retur: return 'CLEAN'
-                return f"INDIKASI TO ATAU KURANG KEYWORD 'RETUR/BEKAS/BKS' : {base_err}"
-            
-            if ki.startswith('TWP.90') and kb.startswith('TWP.90'):
-                if has_retur: return 'CLEAN'
-                return f"INDIKASI TO ATAU KURANG KEYWORD 'RETUR/BEKAS/BKS' : {base_err}"
-                
-            return base_err
-        else:
-            if ki.startswith('TWP.100') and kb.startswith('TWP.100'): return 'CLEAN'
-            if ki.startswith('TWP.90') and kb.startswith('TWP.90'): return 'CLEAN'
-            return base_err
+        return base_err
             
     elif 'Lab & RnD' in gudang_norm:
-        if not is_to:
-            if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith('TWP.999'): return 'CLEAN'
-            if ki.startswith('TWP.999') and kb.startswith('TWP.400'): return 'CLEAN'
-            if ki.startswith('TWP.400') and kb.startswith('TWP.400'): return 'CLEAN'
-            if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100')) and kb.startswith('TWP.666'): return 'CLEAN'
+        if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith('TWP.999'): return 'CLEAN'
+        if ki.startswith(('TWP.999', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
+        if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100', 'TWP.400')) and kb.startswith('TWP.666'): return 'CLEAN'
+        
+        if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
+            if has_rnd: return 'CLEAN'
+            return f"KURANG KEYWORD 'RND' : {base_err}"
             
-            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if has_retur: return 'CLEAN'
-                return f"INDIKASI TO ATAU KURANG KEYWORD 'RETUR/BEKAS/BKS' ATAU 'RND' : {base_err}"
-                
-            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-                if has_retur: return 'CLEAN'
-                return f"INDIKASI TO ATAU KURANG KEYWORD 'RETUR/BEKAS/BKS' ATAU 'LAB' : {base_err}"
+        if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
+            if has_rnd: return 'CLEAN'
+            return f"KURANG KEYWORD 'RND' : {base_err}"
             
-            if ki.startswith('TWP.050') and kb.startswith('TWP.100'):
-                if has_rnd: return 'CLEAN'
-                return f"KURANG KEYWORD 'RND' : {base_err}"
-                
-            if ki.startswith('TWP.100') and kb.startswith('TWP.400'):
-                if has_rnd: return 'CLEAN'
-                return f"KURANG KEYWORD 'RND' : {base_err}"
+        # Kelompok Syarat Berlapis
+        if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
+            if has_retur_lab or (is_to and has_rnd): return 'CLEAN'
+            return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'RND') : {base_err}"
             
-            return base_err
-        else:
-            if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-                if has_lab: return 'CLEAN'
-                return f"KURANG KEYWORD 'LAB' : {base_err}"
-            if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
-                if has_rnd: return 'CLEAN'
-                return f"KURANG KEYWORD 'RND' : {base_err}"
-            return base_err
+        if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
+            if has_retur_lab or (is_to and has_lab): return 'CLEAN'
+            return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'LAB') : {base_err}"
+            
+        return base_err
             
     return 'CLEAN'
 # =============================================================================
