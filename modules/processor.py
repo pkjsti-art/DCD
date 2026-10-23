@@ -57,7 +57,8 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    if re.search(r'(?<!\w)\+\s*[CD]\b', t_upper): return True
+    # PERBAIKAN: Melepas batasan depan, +C/+D yang nempel pada huruf/angka sekarang terbaca SAH.
+    if re.search(r'\+\s*[CD]\b', t_upper): return True
     return False
 
 def ekstrak_pibc_lab(teks_filtered):
@@ -117,7 +118,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     has_rnd = bool(re.search(r'\bRND\b', tg))
     has_lab = bool(re.search(r'\bLAB\b', tg))
     
-    # Kelompok Universal (Bebas Hambatan)
     if ki.startswith('TWP.00') and kb.startswith('TWP.00'):
         return 'CLEAN'
     
@@ -128,7 +128,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
         if ki.startswith(('TWP.100', 'TWP.90', 'TWP.051', 'TWP.400')) and kb.startswith('TWP.666'): return 'CLEAN'
         if ki.startswith('TWP.050') and kb.startswith('TWP.90'): return 'CLEAN'
         
-        # Kelompok Syarat Keyword
         if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
             if has_retur_dyeing or is_to: return 'CLEAN'
             return f"KURANG KEYWORD PENJELAS (RETUR / BEKAS / BKS / TO) : {base_err}"
@@ -152,7 +151,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             if has_rnd: return 'CLEAN'
             return f"KURANG KEYWORD 'RND' : {base_err}"
             
-        # Kelompok Syarat Berlapis
         if ki.startswith('TWP.100') and kb.startswith('TWP.100'):
             if has_retur_lab or (is_to and has_rnd): return 'CLEAN'
             return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'RND') : {base_err}"
