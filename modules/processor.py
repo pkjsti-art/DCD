@@ -57,8 +57,6 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    # PERBAIKAN SENSOR TO: Mendeteksi +C/+D yang nempel tanpa spasi. 
-    # Akan ditolak HANYA JIKA huruf setelahnya adalah abjad A-Z (seperti +CONES).
     if re.search(r'\+\s*[CD](?![A-Z])', t_upper): return True
     return False
 
@@ -166,10 +164,6 @@ def siapkan_kolom_standar(df_mb):
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
     elif not col_gudang_mb: df_mb['Gudang'] = ''
 
-    # ===================================================================================
-    # PERBAIKAN MUTLAK: Gembok Forward Fill Berdasarkan Batas 'Kode MB'
-    # Mencegah keterangan/gudang bocor ke dokumen transaksi lain.
-    # ===================================================================================
     if 'Kode' in df_mb.columns:
         last_k = ""
         for idx in df_mb.index:
@@ -184,7 +178,6 @@ def siapkan_kolom_standar(df_mb):
         curr_kode = str(df_mb.at[idx, 'Kode']).strip() if 'Kode' in df_mb.columns else ""
         
         if curr_kode != last_kode_tracker:
-            # Pindah ke dokumen baru, RESET semua memori ke baris pertama dokumen tsb
             last_kode_tracker = curr_kode
             last_gudang = str(df_mb.at[idx, 'Gudang']).strip() if 'Gudang' in df_mb.columns else ""
             last_ket = str(df_mb.at[idx, 'Keterangan']).strip() if 'Keterangan' in df_mb.columns else ""
@@ -198,7 +191,6 @@ def siapkan_kolom_standar(df_mb):
             if 'Keterangan' in df_mb.columns: df_mb.at[idx, 'Keterangan'] = last_ket
             if 'Keterangan Lain' in df_mb.columns: df_mb.at[idx, 'Keterangan Lain'] = last_ket_lain
         else:
-            # Berada di dalam dokumen MB yang sama, jalankan proses Fill
             curr_gudang = str(df_mb.at[idx, 'Gudang']).strip() if 'Gudang' in df_mb.columns else ""
             curr_ket = str(df_mb.at[idx, 'Keterangan']).strip() if 'Keterangan' in df_mb.columns else ""
             curr_ket_lain = str(df_mb.at[idx, 'Keterangan Lain']).strip() if 'Keterangan Lain' in df_mb.columns else ""
@@ -214,7 +206,6 @@ def siapkan_kolom_standar(df_mb):
             if curr_ket_lain.lower() in ['nan', 'none', 'nat', '']:
                 if 'Keterangan Lain' in df_mb.columns: df_mb.at[idx, 'Keterangan Lain'] = last_ket_lain
             else: last_ket_lain = curr_ket_lain
-    # ===================================================================================
 
     col_target_qty, col_target_unit, col_qty, col_unit, col_kode_item = None, None, None, None, None
 
@@ -265,7 +256,7 @@ def siapkan_kolom_standar(df_mb):
     return df_mb
 
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
-    keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'HTC']
+    keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'CONE', 'CONES', 'HTC']
 
     pibc_available_keys = set()
     pg_available_keys = set()
@@ -505,8 +496,13 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if not benang_status_rendered:
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
-                    if abs(selisih_total) <= 0.01: df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
-                    else: df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
+                    
+                    # LOGIKA KUNCI GANDA: Hanya bisa 'MEMANG SELISIH' jika selisih tidak sama dengan 0.
+                    if abs(selisih_total) <= 0.01: 
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                    else: 
+                        df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
+                    
                     benang_status_rendered = True
             else:
                 k_item_upper = kode_item.upper()
@@ -620,9 +616,9 @@ def buat_excel_rekap_audit(df_hasil):
                     'Gudang': row.get('Gudang', ''),
                     'Kode Dokumen MB': row.get('Kode', ''),
                     'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
-                    'Item Bermasalah': item_bermasalah,
                     'Keterangan': row.get('Keterangan', ''),
                     'Keterangan Lain': row.get('Keterangan Lain', ''),
+                    'Item Bermasalah': item_bermasalah,
                     'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)', ''),
                     'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)', ''),
                     'Qty PIBC': row.get('Qty PIBC', ''),
