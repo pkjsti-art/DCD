@@ -220,8 +220,8 @@ def siapkan_kolom_standar(df_mb):
 
     if not col_kode_item: col_kode_item = cari_kolom_akurat(df_mb, ['KODEITEM'])
 
-    seri_target_gr = pd.Series([''] * len(df_mb), dtype=object)
-    seri_bb_gr = pd.Series([''] * len(df_mb), dtype=object)
+    seri_target_gr = pd.Series([None] * len(df_mb), dtype=object)
+    seri_bb_gr = pd.Series([None] * len(df_mb), dtype=object)
 
     for idx, r in df_mb.iterrows():
         kode_item = str(r[col_kode_item]).strip() if col_kode_item and pd.notna(r[col_kode_item]) else ''
@@ -247,7 +247,12 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
+    # Inisiasi nilai awal angka dengan None agar terbaca murni Numeric oleh Excel
+    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']:
+        if col_baru not in df_mb.columns: df_mb[col_baru] = None
+        df_mb[col_baru] = df_mb[col_baru].astype(object)
+        
+    for col_baru in ['Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
@@ -416,14 +421,14 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
             if is_diabaikan:
-                df_mb.at[idx, 'Qty Target Standar (GR)'] = ''
-                df_mb.at[idx, 'Qty BB Standar (GR)'] = ''
+                df_mb.at[idx, 'Qty Target Standar (GR)'] = None
+                df_mb.at[idx, 'Qty BB Standar (GR)'] = None
                 df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
                 continue
 
             if 'Dyeing STI' in g_norm:
                 if kode_item.upper().startswith('TBB'):
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = ''
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = None
                     df_mb.at[idx, 'Crosscheck Qty'] = ''
                 else:
                     val_target_sti = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
@@ -440,10 +445,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     else:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
                 
-                df_mb.at[idx, 'Qty PIBC'] = ''
-                df_mb.at[idx, 'Qty PG'] = ''
-                df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
-                df_mb.at[idx, 'Selisih PG (GR)'] = ''
+                df_mb.at[idx, 'Qty PIBC'] = None
+                df_mb.at[idx, 'Qty PG'] = None
+                df_mb.at[idx, 'Selisih PIBC (GR)'] = None
+                df_mb.at[idx, 'Selisih PG (GR)'] = None
                 df_mb.at[idx, 'Info Celup Gabung'] = ''
                 df_mb.at[idx, 'Status Cek'] = ''
                 df_mb.at[idx, 'Status PIBC'] = ''
@@ -576,15 +581,38 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         idx_first = df_sub.index[0]
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
+        # PERBAIKAN LOGIKA STATUS CEK UNTUK DYEING STI (TIDAK COMPLETE JIKA TBB)
         if is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = ''
         else:
-            df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
+            is_dyeing_sti_tbb_only = ('Dyeing STI' in gudang_group_norm) and (len(rincian_benang_list) == 0)
+            if is_dyeing_sti_tbb_only:
+                df_mb.at[idx_first, 'Status Cek'] = ''
+            else:
+                df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLETE'
+            
             if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
                 df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
             
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
+
+    # Susun ulang QTY & SELISIH HANYA untuk df_mb (Hasil Keseluruhan)
+    cols = list(df_mb.columns)
+    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
+    
+    for c in group_cols:
+        if c in cols: cols.remove(c)
+    
+    if 'Crosscheck Qty' in cols:
+        idx_insert = cols.index('Crosscheck Qty')
+    else:
+        idx_insert = len(cols)
+        
+    for c in reversed(group_cols):
+        cols.insert(idx_insert, c)
+        
+    df_mb = df_mb[cols]
 
     return df_mb
 
@@ -599,6 +627,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         cell.fill = header_fill
         cell.font = header_font
         
+        # Atur lebar kolom untuk wrap text
         if col_name in wrap_cols:
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 35
         else:
@@ -628,6 +657,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         for c_idx, cell in enumerate(row, start=1):
             cell.fill = fill_to_apply
             
+            # Terapkan wrap text tanpa membatasi Row Height (biarkan Excel Auto-Fit)
             col_name = df.columns[c_idx - 1]
             if col_name in wrap_cols:
                 cell.alignment = wrap_alignment
@@ -664,6 +694,11 @@ def buat_excel_rekap_audit(df_hasil):
                 else:
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
+                
+                # INJEKSI INFO CELUP GABUNG KE DETAIL KESALAHAN
+                info_cg = str(row.get('Info Celup Gabung', '')).strip()
+                if info_cg:
+                    detail = f"{detail} | [INFO: {info_cg}]" if detail else f"[INFO: {info_cg}]"
                     
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
@@ -672,13 +707,13 @@ def buat_excel_rekap_audit(df_hasil):
                     'Keterangan Lain': row.get('Keterangan Lain', ''),
                     'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
                     'Item Bermasalah': item_bermasalah,
-                    'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)', ''),
-                    'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)', ''),
-                    'Qty PIBC': row.get('Qty PIBC', ''),
-                    'Qty PG': row.get('Qty PG', ''),
-                    'Selisih Benang (GR)': row.get('Selisih Benang (GR)', ''),
-                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)', ''),
-                    'Selisih PG (GR)': row.get('Selisih PG (GR)', ''),
+                    'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)') if pd.notna(row.get('Qty Target Standar (GR)')) else None,
+                    'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)') if pd.notna(row.get('Qty BB Standar (GR)')) else None,
+                    'Qty PIBC': row.get('Qty PIBC') if pd.notna(row.get('Qty PIBC')) else None,
+                    'Qty PG': row.get('Qty PG') if pd.notna(row.get('Qty PG')) else None,
+                    'Selisih Benang (GR)': row.get('Selisih Benang (GR)') if pd.notna(row.get('Selisih Benang (GR)')) else None,
+                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)') if pd.notna(row.get('Selisih PIBC (GR)')) else None,
+                    'Selisih PG (GR)': row.get('Selisih PG (GR)') if pd.notna(row.get('Selisih PG (GR)')) else None,
                     'Jenis Temuan': jenis,
                     'Detail Kesalahan & Seharusnya': detail,
                     'Catatan Auditor': ''
@@ -729,33 +764,94 @@ def buat_excel_rekap_audit(df_hasil):
             
     return output.getvalue()
 
-def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
+def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Sheet 1: PIBC di MB yang Bodong (Tidak ada di Master)
+        data_bodong = []
+        pibc_di_master = set()
+        
         if df_pibc is not None and not df_pibc.empty:
             col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            pibc_di_mb_expanded = set()
-            for p_str in pibc_di_mb:
-                for p in p_str.split(','): pibc_di_mb_expanded.add(p.strip())
-
             if col_dyelot:
-                df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-            else: df_pibc.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-        else: pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
+                pibc_di_master = set(df_pibc[col_dyelot].dropna().astype(str).apply(sanitize_key))
+                
+        for idx, row in df_hasil_mb.iterrows():
+            ext_pibc = str(row.get('Ext_PIBC', ''))
+            if ext_pibc.strip():
+                list_pibc = [p.strip() for p in ext_pibc.split(',')]
+                bodong = [p for p in list_pibc if sanitize_key(p) not in pibc_di_master]
+                if bodong:
+                    data_bodong.append({
+                        'Gudang': row.get('Gudang', ''),
+                        'Kode MB': row.get('Kode', ''),
+                        'Kode PIBC Tidak Ditemukan': ", ".join(bodong),
+                        'Keterangan Asli': row.get('Keterangan', '')
+                    })
+        df_bodong = pd.DataFrame(data_bodong)
+        if not df_bodong.empty:
+            df_bodong.to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
+            format_excel_sheet(writer.sheets['PIBC MB Tidak Ditemukan'], df_bodong, 'Kode MB')
+        else:
+            pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master']}).to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
+        
+        # Sheet 2: Master PIBC yang belum pernah di MB
+        if df_pibc is not None and not df_pibc.empty and col_dyelot:
+            pibc_di_mb_expanded = set()
+            for ext in df_hasil_mb['Ext_PIBC'].dropna():
+                if str(ext).strip():
+                    for p in str(ext).split(','): pibc_di_mb_expanded.add(sanitize_key(p.strip()))
+            
+            df_belum = df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)]
+            df_belum.to_excel(writer, index=False, sheet_name='Master PIBC Belum Diproses')
+        else:
+            pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Master PIBC Belum Diproses')
+            
     return output.getvalue()
 
-def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
+def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if df_pg is not None and not df_pg.empty:
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            pibc_di_mb_expanded = set()
-            for p_str in pibc_di_mb:
-                for p in p_str.split(','): pibc_di_mb_expanded.add(p.strip())
+        # Sheet 1: PG di MB yang Bodong (Tidak ada di Master)
+        data_bodong = []
+        pg_di_master = set()
+        
+        if df_pg is not None and not df_pg.empty and 'PIBC_PG' in df_pg.columns:
+            for val in df_pg['PIBC_PG'].dropna():
+                for p in ekstrak_semua_pibc(str(val)):
+                    pg_di_master.add(sanitize_key(p))
                     
-            if 'PIBC_PG' in df_pg.columns:
-                df_pg[~df_pg['PIBC_PG'].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-            else: df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-        else: pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
+        for idx, row in df_hasil_mb.iterrows():
+            ext_pibc = str(row.get('Ext_PIBC', ''))
+            if ext_pibc.strip():
+                list_pibc = [p.strip() for p in ext_pibc.split(',')]
+                bodong = [p for p in list_pibc if sanitize_key(p) not in pg_di_master]
+                if bodong:
+                    data_bodong.append({
+                        'Gudang': row.get('Gudang', ''),
+                        'Kode MB': row.get('Kode', ''),
+                        'Kode PG Tidak Ditemukan': ", ".join(bodong),
+                        'Keterangan Asli': row.get('Keterangan', '')
+                    })
+                    
+        df_bodong = pd.DataFrame(data_bodong)
+        if not df_bodong.empty:
+            df_bodong.to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
+            format_excel_sheet(writer.sheets['PG MB Tidak Ditemukan'], df_bodong, 'Kode MB')
+        else:
+            pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master PG']}).to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
+        
+        # Sheet 2: Master PG yang belum pernah di MB
+        if df_pg is not None and not df_pg.empty and 'PIBC_PG' in df_pg.columns:
+            pibc_di_mb_expanded = set()
+            for ext in df_hasil_mb['Ext_PIBC'].dropna():
+                if str(ext).strip():
+                    for p in str(ext).split(','): pibc_di_mb_expanded.add(sanitize_key(p.strip()))
+            
+            mask = df_pg['PIBC_PG'].astype(str).apply(lambda x: not any(sanitize_key(p) in pibc_di_mb_expanded for p in ekstrak_semua_pibc(x)))
+            df_belum = df_pg[mask]
+            df_belum.to_excel(writer, index=False, sheet_name='Master PG Belum Diproses')
+        else:
+            pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Master PG Belum Diproses')
+            
     return output.getvalue()
