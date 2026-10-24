@@ -256,6 +256,7 @@ def siapkan_kolom_standar(df_mb):
     return df_mb
 
 def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
+    # Kata Kunci CONE, CONES sudah aktif di sini
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'CONE', 'CONES', 'HTC']
 
     pibc_available_keys = set()
@@ -497,7 +498,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
                     
-                    # LOGIKA KUNCI GANDA: Hanya bisa 'MEMANG SELISIH' jika selisih tidak sama dengan 0.
                     if abs(selisih_total) <= 0.01: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: 
@@ -592,6 +592,7 @@ def buat_excel_rekap_audit(df_hasil):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
+        # 1. Sheet Laporan Ringkas Admin
         data_ringkas = []
         for idx, row in df_hasil.iterrows():
             cq = str(row.get('Crosscheck Qty', '')).upper()
@@ -618,11 +619,14 @@ def buat_excel_rekap_audit(df_hasil):
                     'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
                     'Keterangan': row.get('Keterangan', ''),
                     'Keterangan Lain': row.get('Keterangan Lain', ''),
-                    'Item Bermasalah': item_bermasalah,
+                    'Item Bermasalah': item_bermasalah,                      # 1. POSISI DIGESER
                     'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)', ''),
                     'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)', ''),
+                    'Selisih Benang (GR)': row.get('Selisih Benang (GR)', ''), # 2. PENAMBAHAN KOLOM SELISIH BENANG
                     'Qty PIBC': row.get('Qty PIBC', ''),
+                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)', ''),     # 3. PENAMBAHAN KOLOM SELISIH PIBC
                     'Qty PG': row.get('Qty PG', ''),
+                    'Selisih PG (GR)': row.get('Selisih PG (GR)', ''),         # 4. PENAMBAHAN KOLOM SELISIH PG
                     'Jenis Temuan': jenis,
                     'Detail Kesalahan & Seharusnya': detail,
                     'Catatan Auditor': ''
@@ -634,6 +638,7 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan error/selisih']}).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             
+        # 2. Sheet Error Qty (Full Grup)
         mask_qty = df_hasil['Crosscheck Qty'].astype(str).str.upper().apply(lambda x: ('INCORRECT' in x or 'SELISIH' in x) and x != 'MEMANG SELISIH')
         kode_qty = df_hasil[mask_qty]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_qty) > 0:
@@ -642,6 +647,7 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
             
+        # 3. Sheet Error Varian (Full Grup)
         mask_var = df_hasil['Cek Variant'].astype(str).str.upper().apply(lambda x: x != '' and x != 'CLEAN')
         kode_var = df_hasil[mask_var]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_var) > 0:
@@ -650,6 +656,7 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
             
+        # 4. Sheet Memang Selisih (Full Grup)
         mask_ms = df_hasil['Crosscheck Qty'].astype(str).str.upper() == 'MEMANG SELISIH'
         kode_ms = df_hasil[mask_ms]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_ms) > 0:
@@ -658,35 +665,4 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
             
-    return output.getvalue()
-
-def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if df_pibc is not None and not df_pibc.empty:
-            col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            pibc_di_mb_expanded = set()
-            for p_str in pibc_di_mb:
-                for p in p_str.split(','): pibc_di_mb_expanded.add(p.strip())
-
-            if col_dyelot:
-                df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-            else: df_pibc.to_excel(writer, index=False, sheet_name='PIBC Tidak Ada di MB')
-        else: pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
-    return output.getvalue()
-
-def buat_excel_pg_tidak_di_mb(df_hasil_mb, df_pg):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if df_pg is not None and not df_pg.empty:
-            pibc_di_mb = set(df_hasil_mb['Ext_PIBC'].dropna().astype(str).apply(sanitize_key).unique()) if 'Ext_PIBC' in df_hasil_mb.columns else set()
-            pibc_di_mb_expanded = set()
-            for p_str in pibc_di_mb:
-                for p in p_str.split(','): pibc_di_mb_expanded.add(p.strip())
-                    
-            if 'PIBC_PG' in df_pg.columns:
-                df_pg[~df_pg['PIBC_PG'].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)].to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-            else: df_pg.to_excel(writer, index=False, sheet_name='PG Tidak Ada di MB')
-        else: pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Kosong')
     return output.getvalue()
