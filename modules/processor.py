@@ -247,7 +247,7 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    for col_baru in ['Selisih Benang (GR)', 'Qty PIBC', 'Selisih PIBC (GR)', 'Qty PG', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
+    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
@@ -586,23 +586,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
-    # Susun ulang QTY & SELISIH HANYA untuk df_mb (Hasil Keseluruhan)
-    cols = list(df_mb.columns)
-    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
-    
-    for c in group_cols:
-        if c in cols: cols.remove(c)
-    
-    if 'Crosscheck Qty' in cols:
-        idx_insert = cols.index('Crosscheck Qty')
-    else:
-        idx_insert = len(cols)
-        
-    for c in reversed(group_cols):
-        cols.insert(idx_insert, c)
-        
-    df_mb = df_mb[cols]
-
     return df_mb
 
 def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
@@ -682,7 +665,6 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                     
-                # DIKUNCI MATI SUSUNAN 16 KOLOM UNTUK LAPORAN RINGKAS ADMIN
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
@@ -702,12 +684,21 @@ def buat_excel_rekap_audit(df_hasil):
                     'Catatan Auditor': ''
                 })
         
+        # PENGUNCI MUTLAK URUTAN KOLOM LAPORAN RINGKAS
+        kolom_fix = [
+            'Gudang', 'Kode', 'Keterangan', 'Keterangan Lain', 'Kode PIBC Terdeteksi', 
+            'Item Bermasalah', 'Qty Target Standar (GR)', 'Qty BB Standar (GR)', 
+            'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 
+            'Selisih PG (GR)', 'Jenis Temuan', 'Detail Kesalahan & Seharusnya', 'Catatan Auditor'
+        ]
+        
         df_ringkas = pd.DataFrame(data_ringkas)
         if not df_ringkas.empty:
+            df_ringkas = df_ringkas[kolom_fix] # PAKSA URUTAN
             df_ringkas.to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             format_excel_sheet(writer.sheets['Laporan Ringkas Admin'], df_ringkas, 'Kode')
         else:
-            pd.DataFrame({'Info': ['Tidak ada temuan error']}).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
+            pd.DataFrame(columns=kolom_fix).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             
         mask_qty = df_hasil['Crosscheck Qty'].astype(str).str.upper().apply(lambda x: ('INCORRECT' in x or 'SELISIH' in x) and x != 'MEMANG SELISIH')
         kode_qty = df_hasil[mask_qty]['Kode'].unique() if 'Kode' in df_hasil.columns else []
