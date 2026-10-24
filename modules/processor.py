@@ -589,16 +589,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     return df_mb
 
 def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
-    """Fungsi pewarnaan selang-seling berdasar Kode MB dan Header Merah"""
-    
-    # 1. Warnai Header (Baris Pertama)
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
         
-    # 2. Warnai Baris Data (Banded Rows berdasar Kode MB)
     warna_hex = ['FFBDB2FF', 'FFFFCEE3', 'FFFDFFD2', 'FFCAEDFF']
     color_fills = [PatternFill(start_color=c, end_color=c, fill_type='solid') for c in warna_hex]
     
@@ -621,7 +617,6 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
             cell.fill = fill_to_apply
 
 def buat_excel_hasil_keseluruhan(df_hasil):
-    """Generator Unduhan 1: Seluruh Data Master dengan Warna Baru"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_hasil.to_excel(writer, index=False, sheet_name='Hasil Crosscheck')
@@ -629,7 +624,6 @@ def buat_excel_hasil_keseluruhan(df_hasil):
     return output.getvalue()
 
 def buat_excel_rekap_audit(df_hasil):
-    """Generator Unduhan 2: Laporan Audit 4 Sheet dengan Warna Baru"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
@@ -656,16 +650,16 @@ def buat_excel_rekap_audit(df_hasil):
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
-                    'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
                     'Keterangan': row.get('Keterangan', ''),
                     'Keterangan Lain': row.get('Keterangan Lain', ''),
+                    'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
                     'Item Bermasalah': item_bermasalah,
                     'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)', ''),
                     'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)', ''),
-                    'Selisih Benang (GR)': row.get('Selisih Benang (GR)', ''),
                     'Qty PIBC': row.get('Qty PIBC', ''),
-                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)', ''),
                     'Qty PG': row.get('Qty PG', ''),
+                    'Selisih Benang (GR)': row.get('Selisih Benang (GR)', ''),
+                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)', ''),
                     'Selisih PG (GR)': row.get('Selisih PG (GR)', ''),
                     'Jenis Temuan': jenis,
                     'Detail Kesalahan & Seharusnya': detail,
