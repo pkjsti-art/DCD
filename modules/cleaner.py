@@ -29,7 +29,7 @@ def cari_kolom_akurat(df, daftar_kemungkinan):
 def bersihkan_master_mb(file_excel):
     """
     Mendeteksi baris header otomatis, membuang baris judul di atas header,
-    membuang footer, dan melakukan forward fill pada MB.
+    membuang footer, dan melakukan GROUPED forward fill pada MB agar tidak lintas dokumen.
     """
     file_excel.seek(0) # Reset pointer file Streamlit
     df_raw = pd.read_excel(file_excel, header=None)
@@ -49,10 +49,21 @@ def bersihkan_master_mb(file_excel):
     if len(df_mb) > 4:
         df_mb = df_mb.iloc[:-4].reset_index(drop=True)
         
-    kolom_utama = ['Gudang', 'Kode', 'Kode Barang Jadi', 'Nama Barang Jadi', 'Keterangan', 'Keterangan Lain']
-    for nama_kolom in kolom_utama:
+    # FFill Standar untuk identitas dokumen dasar
+    kolom_identitas = ['Gudang', 'Kode', 'Kode Barang Jadi', 'Nama Barang Jadi']
+    for nama_kolom in kolom_identitas:
         if nama_kolom in df_mb.columns:
             df_mb[nama_kolom] = df_mb[nama_kolom].ffill()
+
+    # FFill Keterangan dengan proteksi batas dokumen (Grouped by Kode MB)
+    if 'Kode' in df_mb.columns:
+        for col_ket in ['Keterangan', 'Keterangan Lain']:
+            if col_ket in df_mb.columns:
+                # 1. Bersihkan sel kosong menjadi pd.NA agar terbaca oleh ffill
+                df_mb[col_ket] = df_mb[col_ket].replace(r'^\s*$', pd.NA, regex=True)
+                
+                # 2. Lakukan Forward Fill eksklusif dalam satu grup 'Kode' MB saja
+                df_mb[col_ket] = df_mb.groupby('Kode')[col_ket].ffill().fillna('')
             
     return df_mb
 
