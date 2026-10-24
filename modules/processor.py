@@ -586,22 +586,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
-    # REORDER KOLOM QTY & SELISIH AGAR BERDAMPINGAN DI SEMUA SHEET
-    cols = list(df_mb.columns)
-    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
-    
-    for c in group_cols:
-        if c in cols: cols.remove(c)
-    
-    if 'Crosscheck Qty' in cols:
-        idx_insert = cols.index('Crosscheck Qty')
-    else:
-        idx_insert = len(cols)
-        
-    for c in reversed(group_cols):
-        cols.insert(idx_insert, c)
-        
-    df_mb = df_mb[cols]
+    # Susun ulang kolom di df_mb agar semua sheet di Unduhan Seluruh Data rapi.
+    all_cols = list(df_mb.columns)
+    ordered_front = [
+        'Gudang', 'Kode', 'Keterangan', 'Keterangan Lain', 'Ext_PIBC', 
+        'Kode Item', 'Nama Item', 'Qty Target Standar (GR)', 'Qty BB Standar (GR)', 
+        'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 
+        'Crosscheck Qty', 'Cek Variant'
+    ]
+    final_cols = [c for c in ordered_front if c in all_cols] + [c for c in all_cols if c not in ordered_front]
+    df_mb = df_mb[final_cols]
 
     return df_mb
 
@@ -682,7 +676,7 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                     
-                # DIKUNCI MATI SESUAI TANGKAPAN LAYAR ANDA
+                # SUSUNAN AKURAT: Gudang, Kode, Keterangan, Keterangan Lain, Kode PIBC Terdeteksi, Item Bermasalah, Qty Target Standar (GR), Qty BB Standar (GR), Qty PIBC, Qty PG, Selisih Benang (GR), Selisih PIBC (GR), Selisih PG (GR), Jenis Temuan, Detail Kesalahan & Seharusnya, Catatan Auditor.
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
