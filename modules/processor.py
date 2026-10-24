@@ -101,9 +101,6 @@ def dapatkan_pibc_baris(teks_filtered, gudang, teks_raw):
     if is_to_reprocess(teks_raw): return ekstrak_pibc_to(teks_filtered)
     return ekstrak_semua_pibc(teks_filtered)
 
-# =============================================================================
-# LOGIKA JALUR FLEKSIBEL (UNIFIED RULES)
-# =============================================================================
 def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
     ki = str(ki_full).strip().upper()
     kb = str(kb_full).strip().upper()
@@ -161,16 +158,12 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
         return base_err
             
     return 'CLEAN'
-# =============================================================================
 
 def siapkan_kolom_standar(df_mb):
     col_gudang_mb = cari_kolom_akurat(df_mb, ['GUDANG'])
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
     elif not col_gudang_mb: df_mb['Gudang'] = ''
 
-    # =========================================================================
-    # PERBAIKAN MERGED CELLS: Forward Fill untuk menyalin Gudang ke baris kosong
-    # =========================================================================
     last_gudang = ""
     for idx in df_mb.index:
         g = str(df_mb.at[idx, 'Gudang']).strip()
@@ -179,7 +172,6 @@ def siapkan_kolom_standar(df_mb):
             last_gudang = g
         else:
             df_mb.at[idx, 'Gudang'] = last_gudang
-    # =========================================================================
 
     col_target_qty, col_target_unit, col_qty, col_unit, col_kode_item = None, None, None, None, None
 
@@ -394,9 +386,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
                 continue
 
-            # =========================================================================
-            # POTONG KOMPAS (BYPASS) KHUSUS GUDANG DYEING STI
-            # =========================================================================
             if 'Dyeing STI' in g_norm:
                 if kode_item.upper().startswith('TBB'):
                     df_mb.at[idx, 'Selisih Benang (GR)'] = ''
@@ -416,7 +405,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     else:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
                 
-                # Kosongkan secara paksa dan mutlak
                 df_mb.at[idx, 'Qty PIBC'] = ''
                 df_mb.at[idx, 'Qty PG'] = ''
                 df_mb.at[idx, 'Selisih PIBC (GR)'] = ''
@@ -430,7 +418,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 
                 is_first_row = False
                 continue
-            # =========================================================================
 
             if benang_flag:
                 if 'Mesin Dyeing' in g_norm or 'Lab & RnD' in g_norm:
@@ -550,11 +537,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         idx_first = df_sub.index[0]
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
-        # Jika Dyeing STI, maka dipastikan Status Cek dan Cek Variant tetap kosong mutlak
-        if 'Dyeing STI' in gudang_group_norm:
-            df_mb.at[idx_first, 'Status Cek'] = '' 
-            df_mb.at[idx_first, 'Cek Variant'] = ''
-        elif is_softcone_group:
+        if is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = ''
         else:
             df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLATE'
@@ -569,21 +552,77 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
 def buat_excel_incorrect_multi_sheet(df_hasil):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_inc = df_hasil[df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|SELISIH|TIDAK DI TEMUKAN|TIDAK ADA', case=False, na=False)]
-        kode_grup_inc = df_inc['Kode'].unique() if 'Kode' in df_inc.columns else []
-        df_full_inc = df_hasil[df_hasil['Kode'].isin(kode_grup_inc)] if len(kode_grup_inc) > 0 else df_inc
-        df_full_inc.to_excel(writer, index=False, sheet_name='INCORRECT')
-
-        df_selisih = df_hasil[df_hasil['Crosscheck Qty'] == 'MEMANG SELISIH']
-        kode_grup_selisih = df_selisih['Kode'].unique() if 'Kode' in df_selisih.columns else []
-        df_full_selisih = df_hasil[df_hasil['Kode'].isin(kode_grup_selisih)] if len(kode_grup_selisih) > 0 else df_selisih
-        df_full_selisih.to_excel(writer, index=False, sheet_name='INCORRECT Memang Selisih')
-
-        df_benang_inc = df_hasil[(df_hasil['Rincian Benang'] != '') & (df_hasil['Crosscheck Qty'].astype(str).str.contains('INCORRECT|SELISIH', case=False, na=False))]
-        kode_grup_benang = df_benang_inc['Kode'].unique() if 'Kode' in df_benang_inc.columns else []
-        df_full_benang = df_hasil[df_hasil['Kode'].isin(kode_grup_benang)] if len(kode_grup_benang) > 0 else df_benang_inc
-        df_full_benang.to_excel(writer, index=False, sheet_name='INCORRECT Benang')
         
+        # 1. Menyiapkan Sheet Laporan Ringkas Admin
+        data_ringkas = []
+        for idx, row in df_hasil.iterrows():
+            cq = str(row.get('Crosscheck Qty', '')).upper()
+            cv = str(row.get('Cek Variant', '')).upper()
+            
+            is_qty_err = ('INCORRECT' in cq or 'SELISIH' in cq) and cq != 'MEMANG SELISIH'
+            is_var_err = cv != '' and cv != 'CLEAN'
+            
+            if is_qty_err or is_var_err:
+                item_bermasalah = f"{row.get('Kode Item', '')} - {row.get('Nama Item', '')}"
+                if is_qty_err and is_var_err:
+                    jenis = "Dobel Error (Varian & Qty)"
+                    detail = f"Varian: {cv}. Qty: {cq}"
+                elif is_qty_err:
+                    jenis = "Selisih Kuantitas"
+                    detail = cq
+                else:
+                    jenis = "Pelanggaran SOP Varian"
+                    detail = cv
+                    
+                data_ringkas.append({
+                    'Gudang': row.get('Gudang', ''),
+                    'Kode Dokumen MB': row.get('Kode', ''),
+                    'Kode PIBC Terdeteksi': row.get('Ext_PIBC', ''),
+                    'Item Bermasalah': item_bermasalah,
+                    'Keterangan': row.get('Keterangan', ''),
+                    'Keterangan Lain': row.get('Keterangan Lain', ''),
+                    'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)', ''),
+                    'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)', ''),
+                    'Qty PIBC': row.get('Qty PIBC', ''),
+                    'Qty PG': row.get('Qty PG', ''),
+                    'Jenis Temuan': jenis,
+                    'Detail Kesalahan & Seharusnya': detail,
+                    'Catatan Auditor': ''
+                })
+        
+        df_ringkas = pd.DataFrame(data_ringkas)
+        if not df_ringkas.empty:
+            df_ringkas.to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
+        else:
+            pd.DataFrame({'Info': ['Tidak ada temuan error/selisih']}).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
+            
+        # 2. Sheet Error Qty (Full Grup)
+        mask_qty = df_hasil['Crosscheck Qty'].astype(str).str.upper().apply(lambda x: ('INCORRECT' in x or 'SELISIH' in x) and x != 'MEMANG SELISIH')
+        kode_qty = df_hasil[mask_qty]['Kode'].unique() if 'Kode' in df_hasil.columns else []
+        if len(kode_qty) > 0:
+            df_qty_full = df_hasil[df_hasil['Kode'].isin(kode_qty)]
+            df_qty_full.to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
+        else:
+            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
+            
+        # 3. Sheet Error Varian (Full Grup)
+        mask_var = df_hasil['Cek Variant'].astype(str).str.upper().apply(lambda x: x != '' and x != 'CLEAN')
+        kode_var = df_hasil[mask_var]['Kode'].unique() if 'Kode' in df_hasil.columns else []
+        if len(kode_var) > 0:
+            df_var_full = df_hasil[df_hasil['Kode'].isin(kode_var)]
+            df_var_full.to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
+        else:
+            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
+            
+        # 4. Sheet Memang Selisih (Full Grup)
+        mask_ms = df_hasil['Crosscheck Qty'].astype(str).str.upper() == 'MEMANG SELISIH'
+        kode_ms = df_hasil[mask_ms]['Kode'].unique() if 'Kode' in df_hasil.columns else []
+        if len(kode_ms) > 0:
+            df_ms_full = df_hasil[df_hasil['Kode'].isin(kode_ms)]
+            df_ms_full.to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
+        else:
+            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
+            
     return output.getvalue()
 
 def buat_excel_pibc_tidak_di_mb(df_hasil_mb, df_pibc):
