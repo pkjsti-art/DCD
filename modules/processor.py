@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import io
-from openpyxl.styles import PatternFill, Font
+from openpyxl.styles import PatternFill, Font, Alignment
 
 BARIS_DIABAIKAN = [
     "Total Material (Details)", "Total Pekerjaan (Works)", 
@@ -247,7 +247,7 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
+    for col_baru in ['Selisih Benang (GR)', 'Qty PIBC', 'Selisih PIBC (GR)', 'Qty PG', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
@@ -589,14 +589,28 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     return df_mb
 
 def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
+    # 1. Warna Header Merah D51C39 dengan teks Bold Putih
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
-    for cell in ws[1]:
+    
+    # Kolom yang akan otomatis di-Wrap Text
+    wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi']
+    
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
         
+        # Lebarkan kolom spesifik agar wrap text rapi
+        if col_name in wrap_cols:
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 35
+
+    # 2. Warna Baris Selang-Seling (Banded Rows) per grup Kode MB
     warna_hex = ['FFBDB2FF', 'FFFFCEE3', 'FFFDFFD2', 'FFCAEDFF']
     color_fills = [PatternFill(start_color=c, end_color=c, fill_type='solid') for c in warna_hex]
+    
+    wrap_alignment = Alignment(wrap_text=True, vertical='top')
+    std_alignment = Alignment(vertical='top')
     
     try:
         idx_kode = list(df.columns).index(nama_kolom_kode) + 1
@@ -613,8 +627,15 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
             color_index = (color_index + 1) % len(color_fills)
         
         fill_to_apply = color_fills[color_index]
-        for cell in row:
+        for c_idx, cell in enumerate(row, start=1):
             cell.fill = fill_to_apply
+            
+            # Wrap text untuk kolom yang panjang
+            col_name = df.columns[c_idx - 1]
+            if col_name in wrap_cols:
+                cell.alignment = wrap_alignment
+            else:
+                cell.alignment = std_alignment
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
@@ -647,6 +668,7 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                     
+                # SUSUNAN 16 KOLOM FINAL
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
