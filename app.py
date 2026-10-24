@@ -4,7 +4,7 @@ from modules.cleaner import bersihkan_master_mb, bersihkan_master_pibc, bersihka
 from modules.processor import (
     siapkan_kolom_standar, 
     jalankan_proses_crosscheck, 
-    buat_excel_incorrect_multi_sheet,
+    buat_excel_rekap_audit, # <-- FUNGSI BARU YANG KITA SEPAKATI
     buat_excel_pibc_tidak_di_mb,
     buat_excel_pg_tidak_di_mb
 )
@@ -101,15 +101,15 @@ if menu == "Cross Check Data":
                 key="btn_download_all"
             )
         
-        # Generator File Unduhan 2: Rekap Incorrect 3 Sheet
-        data_incorrect = buat_excel_incorrect_multi_sheet(df_hasil)
+        # Generator File Unduhan 2: Laporan Audit 4 Sheet (Revisi)
+        data_audit = buat_excel_rekap_audit(df_hasil)
         with col_dl2:
             st.download_button(
-                label="📥 Unduh Rekap Data INCORRECT (3 Sheet)",
-                data=data_incorrect,
-                file_name="Rekap_Incorrect_DCD.xlsx",
+                label="📥 Unduh Laporan Audit & Temuan (4 Sheet)",
+                data=data_audit,
+                file_name="Rekap_Audit_Temuan_DCD.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="btn_download_incorrect"
+                key="btn_download_audit"
             )
 
         # Generator File Unduhan 3: PIBC Tidak Ada di MB
