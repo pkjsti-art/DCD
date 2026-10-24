@@ -593,7 +593,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
     
-    # Kolom yang akan otomatis di-Wrap Text
+    # Kumpulan kolom yang diwajibkan Wrap Text
     wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi']
     
     for col_idx, col_name in enumerate(df.columns, start=1):
@@ -601,9 +601,11 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         cell.fill = header_fill
         cell.font = header_font
         
-        # Lebarkan kolom spesifik agar wrap text rapi
+        # Lebarkan kolom spesifik agar wrap text rapi (35 karakter)
         if col_name in wrap_cols:
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 35
+        else:
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
 
     # 2. Warna Baris Selang-Seling (Banded Rows) per grup Kode MB
     warna_hex = ['FFBDB2FF', 'FFFFCEE3', 'FFFDFFD2', 'FFCAEDFF']
@@ -668,7 +670,8 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                     
-                # SUSUNAN 16 KOLOM FINAL
+                # SUSUNAN ABSOLUT SESUAI PERMINTAAN TERAKHIR ANDA: 
+                # Gudang, Kode, Keterangan, Keterangan Lain, Kode PIBC Terdeteksi, Item Bermasalah, Target, BB, PIBC, PG, Selisih(3), Jenis, Detail, Catatan
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
