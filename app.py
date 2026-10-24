@@ -6,8 +6,8 @@ from modules.processor import (
     jalankan_proses_crosscheck, 
     buat_excel_hasil_keseluruhan,
     buat_excel_rekap_audit,
-    buat_excel_pibc_tidak_di_mb,
-    buat_excel_pg_tidak_di_mb
+    buat_excel_investigasi_pibc,
+    buat_excel_investigasi_pg
 )
 import io
 
@@ -108,24 +108,24 @@ if menu == "Cross Check Data":
                 key="btn_download_audit"
             )
 
-        # Generator File Unduhan 3: PIBC Tidak Ada di MB
-        data_pibc_tdk_ada = buat_excel_pibc_tidak_di_mb(df_hasil, df_pibc_b)
+        # Generator File Unduhan 3: Laporan Investigasi Anomali PIBC
+        data_pibc_bodong = buat_excel_investigasi_pibc(df_hasil, df_pibc_b)
         with col_dl3:
             st.download_button(
-                label="📥 Unduh Hasil PIBC yang Tidak Ada di MB",
-                data=data_pibc_tdk_ada,
-                file_name="PIBC_Tidak_Ada_di_MB.xlsx",
+                label="📥 Unduh Laporan Investigasi Anomali PIBC",
+                data=data_pibc_bodong,
+                file_name="Laporan_Investigasi_Anomali_PIBC.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="btn_download_pibc_missing"
             )
 
-        # Generator File Unduhan 4: PG Tidak Ada di MB
-        data_pg_tdk_ada = buat_excel_pg_tidak_di_mb(df_hasil, df_pg_b)
+        # Generator File Unduhan 4: Laporan Investigasi Anomali PG
+        data_pg_bodong = buat_excel_investigasi_pg(df_hasil, df_pg_b)
         with col_dl4:
             st.download_button(
-                label="📥 Unduh Hasil PG yang Tidak Ada di MB",
-                data=data_pg_tdk_ada,
-                file_name="PG_Tidak_Ada_di_MB.xlsx",
+                label="📥 Unduh Laporan Investigasi Anomali PG",
+                data=data_pg_bodong,
+                file_name="Laporan_Investigasi_Anomali_PG.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="btn_download_pg_missing"
             )
