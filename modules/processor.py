@@ -57,9 +57,9 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    # PERBAIKAN: (?!\w) memastikan hanya mengecek setelah huruf C/D tidak boleh ada huruf lagi.
-    # A+D(DISPEN) akan lolos karena '(' bukan word character.
-    if re.search(r'\+\s*[CD](?!\w)', t_upper): return True
+    # PERBAIKAN SENSOR TO: Mendeteksi +C/+D yang nempel tanpa spasi. 
+    # Akan ditolak HANYA JIKA huruf setelahnya adalah abjad A-Z (seperti +CONES).
+    if re.search(r'\+\s*[CD](?![A-Z])', t_upper): return True
     return False
 
 def ekstrak_pibc_lab(teks_filtered):
@@ -137,7 +137,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
         return base_err
             
     elif 'Lab & RnD' in gudang_norm:
-        # PERBAIKAN: Menambahkan TWP.90/TWP.901 sbg tujuan sah TWP.050
         if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith(('TWP.999', 'TWP.90')): return 'CLEAN'
         if ki.startswith(('TWP.999', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
         if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100', 'TWP.400')) and kb.startswith('TWP.666'): return 'CLEAN'
@@ -167,15 +166,55 @@ def siapkan_kolom_standar(df_mb):
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
     elif not col_gudang_mb: df_mb['Gudang'] = ''
 
-    # Ffill khusus kolom Gudang
-    last_gudang = ""
+    # ===================================================================================
+    # PERBAIKAN MUTLAK: Gembok Forward Fill Berdasarkan Batas 'Kode MB'
+    # Mencegah keterangan/gudang bocor ke dokumen transaksi lain.
+    # ===================================================================================
+    if 'Kode' in df_mb.columns:
+        last_k = ""
+        for idx in df_mb.index:
+            val_k = str(df_mb.at[idx, 'Kode']).strip()
+            if val_k.lower() in ['nan', 'none', 'nat', '']: df_mb.at[idx, 'Kode'] = last_k
+            else: last_k = val_k
+
+    last_kode_tracker = ""
+    last_gudang, last_ket, last_ket_lain = "", "", ""
+    
     for idx in df_mb.index:
-        g = str(df_mb.at[idx, 'Gudang']).strip()
-        if g.lower() == 'nan' or g.lower() == 'none': g = ''
-        if g != "":
-            last_gudang = g
+        curr_kode = str(df_mb.at[idx, 'Kode']).strip() if 'Kode' in df_mb.columns else ""
+        
+        if curr_kode != last_kode_tracker:
+            # Pindah ke dokumen baru, RESET semua memori ke baris pertama dokumen tsb
+            last_kode_tracker = curr_kode
+            last_gudang = str(df_mb.at[idx, 'Gudang']).strip() if 'Gudang' in df_mb.columns else ""
+            last_ket = str(df_mb.at[idx, 'Keterangan']).strip() if 'Keterangan' in df_mb.columns else ""
+            last_ket_lain = str(df_mb.at[idx, 'Keterangan Lain']).strip() if 'Keterangan Lain' in df_mb.columns else ""
+            
+            if last_gudang.lower() in ['nan', 'none', 'nat']: last_gudang = ''
+            if last_ket.lower() in ['nan', 'none', 'nat']: last_ket = ''
+            if last_ket_lain.lower() in ['nan', 'none', 'nat']: last_ket_lain = ''
+            
+            if 'Gudang' in df_mb.columns: df_mb.at[idx, 'Gudang'] = last_gudang
+            if 'Keterangan' in df_mb.columns: df_mb.at[idx, 'Keterangan'] = last_ket
+            if 'Keterangan Lain' in df_mb.columns: df_mb.at[idx, 'Keterangan Lain'] = last_ket_lain
         else:
-            df_mb.at[idx, 'Gudang'] = last_gudang
+            # Berada di dalam dokumen MB yang sama, jalankan proses Fill
+            curr_gudang = str(df_mb.at[idx, 'Gudang']).strip() if 'Gudang' in df_mb.columns else ""
+            curr_ket = str(df_mb.at[idx, 'Keterangan']).strip() if 'Keterangan' in df_mb.columns else ""
+            curr_ket_lain = str(df_mb.at[idx, 'Keterangan Lain']).strip() if 'Keterangan Lain' in df_mb.columns else ""
+            
+            if curr_gudang.lower() in ['nan', 'none', 'nat', '']: 
+                if 'Gudang' in df_mb.columns: df_mb.at[idx, 'Gudang'] = last_gudang
+            else: last_gudang = curr_gudang
+            
+            if curr_ket.lower() in ['nan', 'none', 'nat', '']:
+                if 'Keterangan' in df_mb.columns: df_mb.at[idx, 'Keterangan'] = last_ket
+            else: last_ket = curr_ket
+            
+            if curr_ket_lain.lower() in ['nan', 'none', 'nat', '']:
+                if 'Keterangan Lain' in df_mb.columns: df_mb.at[idx, 'Keterangan Lain'] = last_ket_lain
+            else: last_ket_lain = curr_ket_lain
+    # ===================================================================================
 
     col_target_qty, col_target_unit, col_qty, col_unit, col_kode_item = None, None, None, None, None
 
@@ -557,7 +596,6 @@ def buat_excel_rekap_audit(df_hasil):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # 1. Sheet Laporan Ringkas Admin
         data_ringkas = []
         for idx, row in df_hasil.iterrows():
             cq = str(row.get('Crosscheck Qty', '')).upper()
@@ -600,7 +638,6 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan error/selisih']}).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             
-        # 2. Sheet Error Qty (Full Grup)
         mask_qty = df_hasil['Crosscheck Qty'].astype(str).str.upper().apply(lambda x: ('INCORRECT' in x or 'SELISIH' in x) and x != 'MEMANG SELISIH')
         kode_qty = df_hasil[mask_qty]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_qty) > 0:
@@ -609,7 +646,6 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
             
-        # 3. Sheet Error Varian (Full Grup)
         mask_var = df_hasil['Cek Variant'].astype(str).str.upper().apply(lambda x: x != '' and x != 'CLEAN')
         kode_var = df_hasil[mask_var]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_var) > 0:
@@ -618,7 +654,6 @@ def buat_excel_rekap_audit(df_hasil):
         else:
             pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
             
-        # 4. Sheet Memang Selisih (Full Grup)
         mask_ms = df_hasil['Crosscheck Qty'].astype(str).str.upper() == 'MEMANG SELISIH'
         kode_ms = df_hasil[mask_ms]['Kode'].unique() if 'Kode' in df_hasil.columns else []
         if len(kode_ms) > 0:
