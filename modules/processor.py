@@ -57,7 +57,9 @@ POLA_PIBC = r'((?:\bTU[\-\s]+|\+[\s]*)?PIBC[\-\s]*[0-9]{6,}(?:#[A-Za-z0-9]+|-[A-
 def is_to_reprocess(teks_raw):
     t_upper = str(teks_raw).upper()
     if 'REPROCESS' in t_upper: return True
-    if re.search(r'(?<!\w)\+\s*[CD]\b', t_upper): return True
+    # PERBAIKAN: (?!\w) memastikan hanya mengecek setelah huruf C/D tidak boleh ada huruf lagi.
+    # A+D(DISPEN) akan lolos karena '(' bukan word character.
+    if re.search(r'\+\s*[CD](?!\w)', t_upper): return True
     return False
 
 def ekstrak_pibc_lab(teks_filtered):
@@ -135,7 +137,8 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
         return base_err
             
     elif 'Lab & RnD' in gudang_norm:
-        if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith('TWP.999'): return 'CLEAN'
+        # PERBAIKAN: Menambahkan TWP.90/TWP.901 sbg tujuan sah TWP.050
+        if ki.startswith(('TWP.050', 'MWP', 'TBM')) and kb.startswith(('TWP.999', 'TWP.90')): return 'CLEAN'
         if ki.startswith(('TWP.999', 'TWP.400')) and kb.startswith('TWP.400'): return 'CLEAN'
         if ki.startswith(('TWP.999', 'TWP.051', 'TWP.100', 'TWP.400')) and kb.startswith('TWP.666'): return 'CLEAN'
         
@@ -164,6 +167,7 @@ def siapkan_kolom_standar(df_mb):
     if col_gudang_mb and col_gudang_mb != 'Gudang': df_mb.rename(columns={col_gudang_mb: 'Gudang'}, inplace=True)
     elif not col_gudang_mb: df_mb['Gudang'] = ''
 
+    # Ffill khusus kolom Gudang
     last_gudang = ""
     for idx in df_mb.index:
         g = str(df_mb.at[idx, 'Gudang']).strip()
