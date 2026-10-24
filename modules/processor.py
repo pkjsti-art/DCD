@@ -247,7 +247,6 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    # Inisiasi nilai awal angka dengan None agar terbaca murni Numeric oleh Excel
     for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = None
         df_mb[col_baru] = df_mb[col_baru].astype(object)
@@ -581,7 +580,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         idx_first = df_sub.index[0]
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
-        # PERBAIKAN LOGIKA STATUS CEK UNTUK DYEING STI (TIDAK COMPLETE JIKA TBB)
         if is_softcone_group:
             df_mb.at[idx_first, 'Status Cek'] = ''
         else:
@@ -597,7 +595,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
-    # Susun ulang QTY & SELISIH HANYA untuk df_mb (Hasil Keseluruhan)
     cols = list(df_mb.columns)
     group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
     
@@ -620,14 +617,13 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
     
-    wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah']
+    wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
     
     for col_idx, col_name in enumerate(df.columns, start=1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
         
-        # Atur lebar kolom untuk wrap text
         if col_name in wrap_cols:
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 35
         else:
@@ -657,7 +653,6 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         for c_idx, cell in enumerate(row, start=1):
             cell.fill = fill_to_apply
             
-            # Terapkan wrap text tanpa membatasi Row Height (biarkan Excel Auto-Fit)
             col_name = df.columns[c_idx - 1]
             if col_name in wrap_cols:
                 cell.alignment = wrap_alignment
@@ -695,7 +690,6 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                 
-                # INJEKSI INFO CELUP GABUNG KE DETAIL KESALAHAN
                 info_cg = str(row.get('Info Celup Gabung', '')).strip()
                 if info_cg:
                     detail = f"{detail} | [INFO: {info_cg}]" if detail else f"[INFO: {info_cg}]"
@@ -719,7 +713,6 @@ def buat_excel_rekap_audit(df_hasil):
                     'Catatan Auditor': ''
                 })
         
-        # PENGUNCI MUTLAK URUTAN KOLOM LAPORAN RINGKAS
         kolom_fix = [
             'Gudang', 'Kode', 'Keterangan', 'Keterangan Lain', 'Kode PIBC Terdeteksi', 
             'Item Bermasalah', 'Qty Target Standar (GR)', 'Qty BB Standar (GR)', 
@@ -729,7 +722,7 @@ def buat_excel_rekap_audit(df_hasil):
         
         df_ringkas = pd.DataFrame(data_ringkas)
         if not df_ringkas.empty:
-            df_ringkas = df_ringkas[kolom_fix] # PAKSA URUTAN
+            df_ringkas = df_ringkas[kolom_fix] 
             df_ringkas.to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             format_excel_sheet(writer.sheets['Laporan Ringkas Admin'], df_ringkas, 'Kode')
         else:
@@ -767,7 +760,6 @@ def buat_excel_rekap_audit(df_hasil):
 def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Sheet 1: PIBC di MB yang Bodong (Tidak ada di Master)
         data_bodong = []
         pibc_di_master = set()
         
@@ -795,7 +787,6 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
         else:
             pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master']}).to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
         
-        # Sheet 2: Master PIBC yang belum pernah di MB
         if df_pibc is not None and not df_pibc.empty and col_dyelot:
             pibc_di_mb_expanded = set()
             for ext in df_hasil_mb['Ext_PIBC'].dropna():
@@ -812,7 +803,6 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
 def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Sheet 1: PG di MB yang Bodong (Tidak ada di Master)
         data_bodong = []
         pg_di_master = set()
         
@@ -841,7 +831,6 @@ def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
         else:
             pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master PG']}).to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
         
-        # Sheet 2: Master PG yang belum pernah di MB
         if df_pg is not None and not df_pg.empty and 'PIBC_PG' in df_pg.columns:
             pibc_di_mb_expanded = set()
             for ext in df_hasil_mb['Ext_PIBC'].dropna():
