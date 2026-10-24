@@ -247,7 +247,7 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
+    for col_baru in ['Selisih Benang (GR)', 'Qty PIBC', 'Selisih PIBC (GR)', 'Qty PG', 'Selisih PG (GR)', 'Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
@@ -586,16 +586,22 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
-    # Susun ulang kolom di df_mb agar semua sheet di Unduhan Seluruh Data rapi.
-    all_cols = list(df_mb.columns)
-    ordered_front = [
-        'Gudang', 'Kode', 'Keterangan', 'Keterangan Lain', 'Ext_PIBC', 
-        'Kode Item', 'Nama Item', 'Qty Target Standar (GR)', 'Qty BB Standar (GR)', 
-        'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)', 
-        'Crosscheck Qty', 'Cek Variant'
-    ]
-    final_cols = [c for c in ordered_front if c in all_cols] + [c for c in all_cols if c not in ordered_front]
-    df_mb = df_mb[final_cols]
+    # Susun ulang QTY & SELISIH HANYA untuk df_mb (Hasil Keseluruhan)
+    cols = list(df_mb.columns)
+    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
+    
+    for c in group_cols:
+        if c in cols: cols.remove(c)
+    
+    if 'Crosscheck Qty' in cols:
+        idx_insert = cols.index('Crosscheck Qty')
+    else:
+        idx_insert = len(cols)
+        
+    for c in reversed(group_cols):
+        cols.insert(idx_insert, c)
+        
+    df_mb = df_mb[cols]
 
     return df_mb
 
@@ -676,7 +682,7 @@ def buat_excel_rekap_audit(df_hasil):
                     jenis = "Pelanggaran SOP Varian"
                     detail = cv
                     
-                # SUSUNAN AKURAT: Gudang, Kode, Keterangan, Keterangan Lain, Kode PIBC Terdeteksi, Item Bermasalah, Qty Target Standar (GR), Qty BB Standar (GR), Qty PIBC, Qty PG, Selisih Benang (GR), Selisih PIBC (GR), Selisih PG (GR), Jenis Temuan, Detail Kesalahan & Seharusnya, Catatan Auditor.
+                # DIKUNCI MATI SUSUNAN 16 KOLOM UNTUK LAPORAN RINGKAS ADMIN
                 data_ringkas.append({
                     'Gudang': row.get('Gudang', ''),
                     'Kode': row.get('Kode', ''),
