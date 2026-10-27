@@ -76,17 +76,27 @@ def ekstrak_pibc_lab(teks_filtered):
 def ekstrak_pibc_to(teks_filtered):
     teks_str = str(teks_filtered)
     hasil = []
+    
+    # 1. Aturan Lama: Cari di dalam kurung
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
     if chunks_kurung:
         for chunk in chunks_kurung:
             kodes = re.findall(POLA_PIBC, chunk, re.IGNORECASE)
             hasil.extend(kodes)
+            
+    # 2. Aturan Lama: Cari setelah kata TO
     if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
             bagian_setelah_to = parts[-1]
             kodes = re.findall(POLA_PIBC, bagian_setelah_to, re.IGNORECASE)
             hasil.extend(kodes)
+            
+    # 3. [ATURAN BARU / FALLBACK]: Jika langkah 1 dan 2 tidak menemukan PIBC, ambil dari manapun di kalimat
+    if not hasil:
+        kodes = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
+        hasil.extend(kodes)
+        
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
 def ekstrak_semua_pibc(teks_filtered):
