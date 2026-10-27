@@ -71,7 +71,10 @@ def ekstrak_pibc_lab(teks_filtered):
         bagian_sebelum = parts[0]
         hasil = re.findall(POLA_PIBC, bagian_sebelum, re.IGNORECASE)
         if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
-    return []
+    
+    # Fallback Lab: Ambil dari manapun jika kosong
+    hasil = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
+    return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
 def ekstrak_pibc_to(teks_filtered):
     teks_str = str(teks_filtered)
@@ -79,23 +82,18 @@ def ekstrak_pibc_to(teks_filtered):
     
     # 1. Aturan Lama: Cari di dalam kurung
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
-    if chunks_kurung:
-        for chunk in chunks_kurung:
-            kodes = re.findall(POLA_PIBC, chunk, re.IGNORECASE)
-            hasil.extend(kodes)
+    for chunk in chunks_kurung:
+        hasil.extend(re.findall(POLA_PIBC, chunk, re.IGNORECASE))
             
-    # 2. Aturan Lama: Cari setelah kata TO
+    # 2. Aturan Lama: Cari setelah kata TO (Hanya jika Langkah 1 tidak menemukan PIBC)
     if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
-            bagian_setelah_to = parts[-1]
-            kodes = re.findall(POLA_PIBC, bagian_setelah_to, re.IGNORECASE)
-            hasil.extend(kodes)
+            hasil.extend(re.findall(POLA_PIBC, parts[-1], re.IGNORECASE))
             
-    # 3. [ATURAN BARU / FALLBACK]: Jika langkah 1 dan 2 tidak menemukan PIBC, ambil dari manapun di kalimat
+    # 3. [ATURAN BARU / JARING PENGAMAN]: Jika Langkah 1 dan 2 KOSONG, langsung jalankan ekstraksi normal untuk SELURUH kalimat
     if not hasil:
-        kodes = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
-        hasil.extend(kodes)
+        hasil.extend(re.findall(POLA_PIBC, teks_str, re.IGNORECASE))
         
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
