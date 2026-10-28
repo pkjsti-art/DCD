@@ -14,21 +14,21 @@ import io
 # Konfigurasi Halaman (Harus selalu di paling atas)
 st.set_page_config(
     page_title="Data Control Dyeing (DCD)",
-    page_icon="⚙️",
+    page_icon="🖥️",
     layout="wide"
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-INDUSTRIAL (BLUE & PURPLE NEON)
+# INJEKSI TEMA UI/UX: CYBER-SERVER (ANIMASI GIF + BLUE/PURPLE NEON)
 # ==========================================
 st.markdown("""
 <style>
-    /* Latar Belakang Wallpaper Manufaktur + Overlay Gelap Biru/Ungu */
+    /* Latar Belakang GIF Server IT Bergerak + Overlay Gelap Biru/Ungu */
     .stApp {
         background-color: #05050a;
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.92)),
-            url("https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=2000&auto=format&fit=crop");
+            url("https://i.pinimg.com/originals/2b/bb/68/2bbb68f9a2b535d97ccbb8b0e8b2fb98.gif"); /* GIF Animasi Server Data */
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
@@ -95,7 +95,7 @@ st.markdown("""
         background: linear-gradient(45deg, #0d0d26, #1a0033) !important;
         color: #00f3ff !important;
         border: 1px solid #00f3ff !important;
-        border-radius: 4px !important; /* Sudut lebih tajam/kaku khas mesin */
+        border-radius: 4px !important; 
         padding: 10px 24px !important;
         font-weight: 900 !important;
         letter-spacing: 1px;
