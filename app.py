@@ -19,15 +19,15 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI & PRESISI MUTLAK
+# INJEKSI TEMA UI/UX: CUSTOM DATACENTER BACKGROUND
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. BACKGROUND GIF SERVER / DATA IT BERGERAK DENGAN TEMA BLUE-PURPLE */
+    /* MENGGUNAKAN GAMBAR BACKGROUND LOKAL DARI REPOSITORY ANDA */
     [data-testid="stAppViewContainer"] {
         background-image: 
-            linear-gradient(rgba(5, 5, 20, 0.88), rgba(10, 5, 25, 0.92)),
-            url("https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif") !important;
+            linear-gradient(rgba(5, 5, 20, 0.75), rgba(10, 5, 25, 0.85)),
+            url("bg_datacenter.png") !important; /* Ganti dengan nama file gambar yang di-upload ke GitHub */
         background-size: cover !important;
         background-position: center !important;
         background-repeat: no-repeat !important;
@@ -41,7 +41,7 @@ st.markdown("""
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
     [data-testid="stSidebar"] {
-        background-color: rgba(5, 5, 15, 0.75) !important;
+        background-color: rgba(5, 5, 15, 0.8) !important;
         backdrop-filter: blur(15px);
         border-right: 2px solid #7f00ff !important;
         box-shadow: 5px 0px 20px rgba(127, 0, 255, 0.3);
@@ -88,7 +88,7 @@ st.markdown("""
        ====================================== 
     */
     [data-testid="stFileUploadDropzone"] {
-        background-color: rgba(5, 5, 20, 0.7) !important;
+        background-color: rgba(5, 5, 20, 0.75) !important;
         border: 1px dashed #7f00ff !important;
         border-radius: 4px !important;
         box-shadow: 0 0 15px rgba(127, 0, 255, 0.1) inset;
@@ -97,7 +97,7 @@ st.markdown("""
     }
     
     [data-testid="stFileUploadDropzone"]:hover {
-        background-color: rgba(15, 5, 40, 0.85) !important;
+        background-color: rgba(15, 5, 40, 0.9) !important;
         border: 1px dashed #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.3) inset, 0 0 15px rgba(0, 243, 255, 0.3);
     }
@@ -117,7 +117,7 @@ st.markdown("""
         border: 1px solid #00f3ff;
         box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
         border-radius: 4px;
-        background-color: rgba(0,0,0,0.6);
+        background-color: rgba(0,0,0,0.7);
     }
 </style>
 """, unsafe_allow_html=True)
