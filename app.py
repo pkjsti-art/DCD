@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: STABIL & BERSIH TANPA KORBAN TOMBOL
+# INJEKSI TEMA UI/UX: SIDEBAR & GLASSMORPHISM 3D
 # ==========================================
 st.markdown(f"""
 <style>
@@ -64,7 +64,7 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* HANYA MENUTUP TEKS TOOLTIP GLITCH DI ATAS TANPA MENGGANGGU TOMBOL */
+    /* MEMBERSIHKAN TULISAN GLITCH "keyboard_double" PADA HOVER SIDEBAR SECARA AMAN */
     [data-testid="stSidebar"] header {{
         display: flex;
         align-items: center;
@@ -72,7 +72,6 @@ st.markdown(f"""
         padding-right: 10px;
     }}
     
-    /* Sembunyikan teks mentah sisa material icon */
     [data-testid="stSidebar"] header span:not(:has(svg)) {{
         display: none !important;
     }}
@@ -292,7 +291,7 @@ if menu == "Cross Check Data":
                 key="btn_download_pibc_missing"
             )
 
-        # Generator File Unduhan 4: Laporan Investigasi Anomali PG
+        # Generator File Unduhan 4: Laporan Investigasi Anomali PG (Kunci Diperbaiki Menjadi btn_download_pg_missing)
         data_pg_bodong = buat_excel_investigasi_pg(df_hasil, df_pg_b)
         with col_dl4:
             st.download_button(
@@ -300,5 +299,5 @@ if menu == "Cross Check Data":
                 data=data_pg_bodong,
                 file_name="Laporan_Investigasi_Anomali_PG.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="btn_download_pibc_missing"
+                key="btn_download_pg_missing"
             )
