@@ -19,81 +19,129 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX CYBERPUNK / NEON
+# INJEKSI TEMA UI/UX: CYBERPUNK COLORFUL & CENTERED GLOW
 # ==========================================
 st.markdown("""
 <style>
-    /* Latar belakang utama aplikasi (Sangat Gelap) */
+    /* Latar Belakang Rame (Ada efek semburat cahaya Pink & Cyan) */
     .stApp {
         background-color: #05050A;
+        background-image: 
+            radial-gradient(circle at 10% 20%, rgba(255, 0, 128, 0.15) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(0, 243, 255, 0.15) 0%, transparent 40%),
+            linear-gradient(180deg, #05050A 0%, #0a0a14 100%);
+        background-attachment: fixed;
     }
     
-    /* Latar belakang dan efek glow pada Sidebar */
+    /* Modifikasi Sidebar (Transparan dengan Glow) */
     [data-testid="stSidebar"] {
-        background-color: #020204 !important;
-        border-right: 1px solid #BF00FF;
-        box-shadow: 2px 0px 15px rgba(191, 0, 255, 0.4);
+        background-color: rgba(5, 5, 10, 0.8) !important;
+        backdrop-filter: blur(10px);
+        border-right: 2px solid #ff007f !important;
+        box-shadow: 5px 0px 20px rgba(255, 0, 127, 0.4);
     }
     
-    /* Modifikasi teks Header (H1, H2, H3) - Biru Cyan Bercahaya */
-    h1, h2, h3 {
-        color: #00F3FF !important;
-        text-shadow: 0px 0px 10px rgba(0, 243, 255, 0.6);
+    /* Warna Teks Umum */
+    p, span, label, .stMarkdown {
+        color: #d1d1e0 !important;
+    }
+
+    /* 
+       ======================================
+       JUDUL UTAMA (CENTERED & SUPER GLOWING) 
+       ====================================== 
+    */
+    h1 {
+        text-align: center !important;
+        width: 100% !important;
+        color: #ffffff !important;
         font-family: 'Courier New', Courier, monospace;
+        font-weight: 900 !important;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        /* Efek Menyala (Glow) Berlapis */
+        text-shadow: 
+            0 0 10px #ff007f, 
+            0 0 20px #ff007f, 
+            0 0 40px #ff007f, 
+            0 0 80px #bf00ff !important;
+        margin-bottom: 10px;
+    }
+    
+    /* Subjudul / H2 & H3 */
+    h2, h3 {
+        color: #00f3ff !important;
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.8);
+        border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+        padding-bottom: 5px;
+    }
+    
+    /* Posisi Deskripsi di bawah judul utama ke tengah */
+    [data-testid="stMarkdownContainer"] > p:first-child {
+        text-align: center !important;
+        color: #00f3ff !important;
+        font-weight: bold;
         letter-spacing: 1px;
     }
-    
-    /* Modifikasi semua Tombol dengan efek Neon Purple Border & Glow */
+
+    /* 
+       ======================================
+       TOMBOL COLORFUL (GRADIENT & GLOW)
+       ====================================== 
+    */
     .stButton > button, [data-testid="stDownloadButton"] > button {
-        background-color: transparent !important;
-        color: #BF00FF !important;
-        border: 2px solid #BF00FF !important;
-        border-radius: 8px;
-        box-shadow: 0 0 10px rgba(191, 0, 255, 0.4) inset, 0 0 10px rgba(191, 0, 255, 0.4);
-        transition: all 0.3s ease;
-        font-weight: bold;
-        letter-spacing: 0.5px;
+        background: linear-gradient(45deg, #ff007f, #7f00ff) !important;
+        color: #ffffff !important;
+        border: 2px solid #ff007f !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        font-weight: 900 !important;
+        letter-spacing: 1px;
+        box-shadow: 0 0 15px rgba(255, 0, 127, 0.5) !important;
+        transition: all 0.3s ease-in-out;
     }
     
-    /* Efek saat kursor diarahkan ke tombol (Hover) */
     .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
-        background-color: #BF00FF !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 0 20px rgba(191, 0, 255, 0.8) inset, 0 0 20px rgba(191, 0, 255, 0.8);
-        border: 2px solid #BF00FF !important;
+        background: linear-gradient(45deg, #00f3ff, #007fff) !important;
+        border: 2px solid #00f3ff !important;
+        box-shadow: 0 0 25px rgba(0, 243, 255, 0.8), 0 0 40px rgba(0, 127, 255, 0.5) !important;
+        transform: scale(1.05);
+        color: #ffffff !important;
     }
-    
-    /* Modifikasi Area Drag & Drop File Uploader */
+
+    /* 
+       ======================================
+       AREA UPLOAD FILE (CYBERPUNK BOX)
+       ====================================== 
+    */
     [data-testid="stFileUploadDropzone"] {
-        background-color: #0A0A14 !important;
-        border: 2px dashed #00F3FF !important;
-        box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
-        border-radius: 10px;
+        background-color: rgba(10, 10, 25, 0.6) !important;
+        border: 2px dashed #00f3ff !important;
+        border-radius: 12px !important;
+        box-shadow: 0 0 15px rgba(0, 243, 255, 0.2) inset, 0 0 15px rgba(0, 243, 255, 0.2);
         transition: all 0.3s ease;
     }
+    
     [data-testid="stFileUploadDropzone"]:hover {
-        background-color: #0F0F1A !important;
-        box-shadow: 0 0 25px rgba(0, 243, 255, 0.4);
+        background-color: rgba(30, 10, 40, 0.8) !important;
+        border: 2px dashed #ff007f !important;
+        box-shadow: 0 0 25px rgba(255, 0, 127, 0.5) inset, 0 0 25px rgba(255, 0, 127, 0.5);
     }
+    
     [data-testid="stFileUploadDropzone"] * {
-        color: #00F3FF !important;
+        color: #00f3ff !important;
     }
-    
-    /* Modifikasi garis pemisah (Divider) */
+
+    /* Garis pembatas (Divider) */
     hr {
-        border-top: 1px solid #BF00FF !important;
-        box-shadow: 0px 1px 10px rgba(191, 0, 255, 0.5);
+        border-top: 2px solid #bf00ff !important;
+        box-shadow: 0px 0px 15px #bf00ff;
     }
-    
-    /* Warna teks standar (Paragraf, Label, dll) */
-    p, span, label, .stMarkdown {
-        color: #B0B0D0 !important;
-    }
-    
-    /* Efek pendaran pada tabel Dataframe Streamlit */
+
+    /* Tabel Dataframe */
     [data-testid="stDataFrame"] {
-        border: 1px solid #BF00FF;
-        box-shadow: 0 0 15px rgba(191, 0, 255, 0.2);
+        border: 2px solid #7f00ff;
+        box-shadow: 0 0 20px rgba(127, 0, 255, 0.4);
         border-radius: 8px;
     }
 </style>
