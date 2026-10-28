@@ -68,15 +68,15 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MENYEMBUNYIKAN TEKS ICON SIDEBAR YANG TERSISA (KEYBOARD_DOUBLE) */
-    [data-testid="stSidebarNav"] span, [data-testid="stSidebar"] [data-testid="stDecoration"] + div span,
-    button[kind="header"] span {{
-        /* Mengamankan elemen teks liar bawaan sidebar */
+    /* MEMBATASI DAN MENYEMBUNYIKAN TOTAL TEKS "keyboard_double" DI HEADER SIDEBAR */
+    [data-testid="stSidebar"] header [data-testid="stDecoration"] ~ div,
+    [data-testid="stSidebar"] [data-testid="collapsedControl"] span,
+    [data-testid="stSidebar"] header span {{
+        display: none !important;
     }}
     
-    /* Sembunyikan elemen teks ikon collapse sidebar yang glitch */
-    [data-testid="stSidebar"] [data-testid="collapsedControl"] + div span,
-    [data-testid="stSidebar"] header span {{
+    /* Target spesifik untuk teks string glitch di sidebar */
+    [data-testid="stSidebar"] section > div > div > div > span {{
         display: none !important;
     }}
 
