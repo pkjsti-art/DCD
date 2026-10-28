@@ -202,4 +202,14 @@ if 'df_hasil_crosscheck' not in st.session_state:
 if 'df_pibc_bersih' not in st.session_state:
     st.session_state['df_pibc_bersih'] = None
 if 'df_pg_bersih' not in st.session_state:
-    st.session_state['Tulisan **`keyboard_double`** tersebut muncul karena itu adalah nama *icon* bawaan dari Material Design / Streamlit yang terpanggil di dalam kode `st.sidebar.header("Navigasi Menu")
+    st.session_state['Tulisan **`keyboard_double`** tersebut muncul karena itu adalah nama *icon* bawaan dari Material Design / Streamlit yang terpanggil di dalam kode `st.sidebar.header("Navigasi Menu")`. 
+
+Di versi Streamlit terbaru, ketika kita memberikan parameter string berformat ikon ke dalam fungsi `st.sidebar.header()` (atau `st.sidebar.selectbox`), Streamlit terkadang mendeteksinya sebagai perintah untuk merender *icon* Material Design, sehingga teks nama ikonnya ikutan tercetak.
+
+Untuk menghilangkannya dan membuat tampilan *sidebar* Anda kembali bersih serta keren, kita cukup menghapus atau mengganti string teks header tersebut menjadi teks biasa tanpa embel-embel ikon.
+
+Silakan perbarui baris kode bagian *sidebar* di file `app.py` Anda menjadi seperti ini:
+
+```python
+st.sidebar.markdown("### ⚡ Navigasi Menu")
+menu = st.sidebar.selectbox("Pilih Menu", ["Cross Check Data"])
