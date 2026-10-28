@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: GLASSMORPHISM 3D & DATACENTER
+# INJEKSI TEMA UI/UX: CYBER-SIDEBAR & GLASSMORPHISM 3D
 # ==========================================
 st.markdown(f"""
 <style>
@@ -53,12 +53,39 @@ st.markdown(f"""
         background: transparent !important;
     }}
     
-    /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
+    /* 
+       ======================================
+       MODIFIKASI SIDEBAR Keren & Selaras (Glassmorphism 3D)
+       ====================================== 
+    */
     [data-testid="stSidebar"] {{
-        background-color: rgba(5, 5, 15, 0.8) !important;
-        backdrop-filter: blur(15px);
-        border-right: 2px solid #7f00ff !important;
-        box-shadow: 5px 0px 20px rgba(127, 0, 255, 0.3);
+        background: rgba(10, 10, 25, 0.65) !important;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-right: 1px solid rgba(0, 243, 255, 0.3) !important;
+        box-shadow: 
+            5px 0px 30px rgba(127, 0, 255, 0.25),
+            inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
+    }}
+
+    /* Styling Teks di dalam Sidebar */
+    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {{
+        color: #00f3ff !important;
+        font-family: 'Courier New', Courier, monospace;
+        letter-spacing: 1px;
+    }}
+
+    /* Kotak Pilihan Menu (Selectbox) di Sidebar agar Senada */
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: rgba(15, 15, 35, 0.8) !important;
+        border: 1px solid rgba(0, 243, 255, 0.4) !important;
+        border-radius: 8px !important;
+        color: #ffffff !important;
+        box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.1);
+    }}
+
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
+        fill: #00f3ff !important;
     }}
     
     /* Warna Teks Umum */
