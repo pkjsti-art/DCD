@@ -19,27 +19,24 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI PRESISI MUTLAK
+# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI & PRESISI CENTER
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. MEMAKSA BACKGROUND ANIMASI GIF DI LEVEL PALING AKAR */
-    .stApp {
+    /* 1. MENGATASI BACKGROUND GIF YANG TERTUTUP */
+    [data-testid="stAppViewContainer"] {
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.90)),
-            url("https://i.pinimg.com/originals/2b/bb/68/2bbb68f9a2b535d97ccbb8b0e8b2fb98.gif") !important;
+            url("https://i.gifer.com/Xqg8.gif") !important; /* Tautan GIF yang lebih stabil */
         background-size: cover !important;
         background-position: center !important;
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
     }
     
-    /* 2. MENGHANCURKAN LAPISAN BLOCKER BAWAAN STREAMLIT */
-    [data-testid="stAppViewContainer"], 
-    [data-testid="stHeader"], 
-    .stApp > header {
-        background-color: transparent !important;
-        background-image: none !important;
+    /* Menghilangkan background bawaan Streamlit agar tembus pandang */
+    .stApp, [data-testid="stHeader"] {
+        background: transparent !important;
     }
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
@@ -126,12 +123,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# MENGGUNAKAN NATIVE HTML UNTUK MEMAKSA TEKS MUTLAK DI TENGAH TANPA TERPENGARUH STREAMLIT PADDING
+# MENGGUNAKAN NATIVE HTML ALIGN AGAR PRESISI CENTER MUTLAK
 st.markdown("""
-<div style="text-align: center; width: 100%; margin-top: -10px; margin-bottom: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-    <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.8rem; text-transform: uppercase; margin-bottom: 8px; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; padding: 0;">DATA CONTROL DYEING (DCD)</h1>
-    <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin: 0; padding: 0;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
-</div>
+    <h1 align="center" style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.8rem; text-transform: uppercase; margin-bottom: 0px; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff;">DATA CONTROL DYEING (DCD)</h1>
+    <p align="center" style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin-top: 10px; margin-bottom: 30px;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
 """, unsafe_allow_html=True)
 
 # 1. Inisialisasi Session State agar data tetap tersimpan (STAY) meskipun tombol unduh diklik
