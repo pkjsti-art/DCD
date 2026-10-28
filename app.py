@@ -23,11 +23,11 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. BACKGROUND GIF SERVER / DATA IT YANG STABIL & BERGERAK */
+    /* 1. BACKGROUND GIF SERVER / DATA IT BERGERAK DENGAN TEMA BLUE-PURPLE */
     [data-testid="stAppViewContainer"] {
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.88), rgba(10, 5, 25, 0.92)),
-            url("https://media.giphy.com/media/l38GQqrA43SodP895/giphy.gif") !important;
+            url("https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif") !important;
         background-size: cover !important;
         background-position: center !important;
         background-repeat: no-repeat !important;
@@ -123,7 +123,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# JUDUL UTAMA DENGAN PRESISI TENGAH MUTLAK (BEBAS DARI IKON ANCHOR BAWAAN STREAMLIT)
+# JUDUL UTAMA DENGAN PRESISI TENGAH MUTLAK
 st.markdown("""
     <div style="width: 100%; text-align: center; margin-top: -10px; margin-bottom: 30px;">
         <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.6rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; display: inline-block;">DATA CONTROL DYEING (DCD)</h1>
@@ -231,11 +231,11 @@ if menu == "Cross Check Data":
             )
 
         # Generator File Unduhan 4: Laporan Investigasi Anomali PG
-        data_pg_bodong = buat_excel_investigasi_pg(df_hasil, df_pg_b)
+        data_pibc_bodong = buat_excel_investigasi_pg(df_hasil, df_pg_b)
         with col_dl4:
             st.download_button(
                 label="📥 Unduh Laporan Investigasi Anomali PG",
-                data=data_pg_bodong,
+                data=data_pibc_bodong,
                 file_name="Laporan_Investigasi_Anomali_PG.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="btn_download_pg_missing"
