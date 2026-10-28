@@ -68,6 +68,18 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
+    /* MENYEMBUNYIKAN TEKS ICON SIDEBAR YANG TERSISA (KEYBOARD_DOUBLE) */
+    [data-testid="stSidebarNav"] span, [data-testid="stSidebar"] [data-testid="stDecoration"] + div span,
+    button[kind="header"] span {{
+        /* Mengamankan elemen teks liar bawaan sidebar */
+    }}
+    
+    /* Sembunyikan elemen teks ikon collapse sidebar yang glitch */
+    [data-testid="stSidebar"] [data-testid="collapsedControl"] + div span,
+    [data-testid="stSidebar"] header span {{
+        display: none !important;
+    }}
+
     /* Styling Teks di dalam Sidebar */
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {{
         color: #00f3ff !important;
@@ -303,5 +315,5 @@ if menu == "Cross Check Data":
                 data=data_pg_bodong,
                 file_name="Laporan_Investigasi_Anomali_PG.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="btn_download_pg_missing"
+                key="btn_download_pibc_missing"
             )
