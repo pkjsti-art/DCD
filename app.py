@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: PEMBUNUH GLITCH HOVER SIDEBAR MUTLAK
+# INJEKSI TEMA UI/UX: STABIL & BERSIH TANPA KORBAN TOMBOL
 # ==========================================
 st.markdown(f"""
 <style>
@@ -64,20 +64,17 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MEMBUNUH TOOLTIP / TEKS HOVER GLITCH DI TOMBOL SIDEBAR SECARA TOTAL */
-    [data-testid="stSidebar"] header button {{
-        overflow: hidden !important;
+    /* HANYA MENUTUP TEKS TOOLTIP GLITCH DI ATAS TANPA MENGGANGGU TOMBOL */
+    [data-testid="stSidebar"] header {{
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 10px;
     }}
     
-    [data-testid="stSidebar"] header button span, 
-    [data-testid="stSidebar"] header [data-testid="stSidebarHeader"] span,
-    [data-testid="stSidebar"] header [title] {{
+    /* Sembunyikan teks mentah sisa material icon */
+    [data-testid="stSidebar"] header span:not(:has(svg)) {{
         display: none !important;
-    }}
-
-    /* Menghilangkan atribut title (tooltip bawaan) pada tombol header sidebar */
-    [data-testid="stSidebar"] header button::after {{
-        content: "" !important;
     }}
 
     /* Styling Teks di dalam Sidebar */
