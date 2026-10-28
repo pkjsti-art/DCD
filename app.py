@@ -10,6 +10,7 @@ from modules.processor import (
     buat_excel_investigasi_pg
 )
 import io
+import base64
 
 # Konfigurasi Halaman (Harus selalu di paling atas)
 st.set_page_config(
@@ -18,51 +19,64 @@ st.set_page_config(
     layout="wide"
 )
 
+# Fungsi untuk memuat gambar background lokal agar langsung terbaca oleh CSS
+def get_base64_of_bin_file(bin_file):
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except:
+        return ""
+
+# Membaca file bg_datacenter.png secara lokal
+bin_str = get_base64_of_bin_file('bg_datacenter.png')
+bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
+
 # ==========================================
-# INJEKSI TEMA UI/UX: CUSTOM DATACENTER BACKGROUND
+# INJEKSI TEMA UI/UX: DATACENTER BACKGROUND BASE64
 # ==========================================
-st.markdown("""
+st.markdown(f"""
 <style>
-    /* MENGGUNAKAN GAMBAR BACKGROUND LOKAL DARI REPOSITORY ANDA */
-    [data-testid="stAppViewContainer"] {
+    /* MENGGUNAKAN BASE64 IMAGE AGAR PASTI MUNCUL DI STREAMLIT CLOUD */
+    [data-testid="stAppViewContainer"] {{
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.75), rgba(10, 5, 25, 0.85)),
-            url("bg_datacenter.png") !important; /* Ganti dengan nama file gambar yang di-upload ke GitHub */
+            url("{bg_css}") !important;
         background-size: cover !important;
         background-position: center !important;
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
-    }
+    }}
     
     /* Menghilangkan background bawaan Streamlit agar transparan */
-    .stApp, [data-testid="stHeader"] {
+    .stApp, [data-testid="stHeader"] {{
         background: transparent !important;
-    }
+    }}
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
-    [data-testid="stSidebar"] {
+    [data-testid="stSidebar"] {{
         background-color: rgba(5, 5, 15, 0.8) !important;
         backdrop-filter: blur(15px);
         border-right: 2px solid #7f00ff !important;
         box-shadow: 5px 0px 20px rgba(127, 0, 255, 0.3);
-    }
+    }}
     
     /* Warna Teks Umum */
-    p, span, label, .stMarkdown, .stText {
+    p, span, label, .stMarkdown, .stText {{
         color: #c9c9e8 !important;
-    }
+    }}
 
     /* Mengurangi jarak kosong di bagian atas */
-    [data-testid="block-container"] {
+    [data-testid="block-container"] {{
         padding-top: 2rem !important;
-    }
+    }}
 
     /* 
        ======================================
        TOMBOL KENDALI (INDUSTRIAL NEON)
        ====================================== 
     */
-    .stButton > button, [data-testid="stDownloadButton"] > button {
+    .stButton > button, [data-testid="stDownloadButton"] > button {{
         background: linear-gradient(45deg, #0d0d26, #1a0033) !important;
         color: #00f3ff !important;
         border: 1px solid #00f3ff !important;
@@ -73,52 +87,52 @@ st.markdown("""
         text-transform: uppercase;
         box-shadow: 0 0 10px rgba(0, 243, 255, 0.3) inset, 0 0 10px rgba(0, 243, 255, 0.3) !important;
         transition: all 0.3s ease-in-out;
-    }
+    }}
     
-    .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
+    .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {{
         background: linear-gradient(45deg, #0033aa, #7f00ff) !important;
         border: 1px solid #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.8), 0 0 30px rgba(127, 0, 255, 0.6) !important;
         color: #ffffff !important;
-    }
+    }}
 
     /* 
        ======================================
        AREA UPLOAD FILE (HUD SCANNER)
        ====================================== 
     */
-    [data-testid="stFileUploadDropzone"] {
+    [data-testid="stFileUploadDropzone"] {{
         background-color: rgba(5, 5, 20, 0.75) !important;
         border: 1px dashed #7f00ff !important;
         border-radius: 4px !important;
         box-shadow: 0 0 15px rgba(127, 0, 255, 0.1) inset;
         backdrop-filter: blur(5px);
         transition: all 0.3s ease;
-    }
+    }}
     
-    [data-testid="stFileUploadDropzone"]:hover {
+    [data-testid="stFileUploadDropzone"]:hover {{
         background-color: rgba(15, 5, 40, 0.9) !important;
         border: 1px dashed #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.3) inset, 0 0 15px rgba(0, 243, 255, 0.3);
-    }
+    }}
     
-    [data-testid="stFileUploadDropzone"] * {
+    [data-testid="stFileUploadDropzone"] * {{
         color: #00f3ff !important;
-    }
+    }}
 
     /* Garis pembatas (Divider) */
-    hr {
+    hr {{
         border-top: 1px solid #7f00ff !important;
         box-shadow: 0px 0px 10px #7f00ff;
-    }
+    }}
 
     /* Tabel Dataframe (Monitor Display) */
-    [data-testid="stDataFrame"] {
+    [data-testid="stDataFrame"] {{
         border: 1px solid #00f3ff;
         box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
         border-radius: 4px;
         background-color: rgba(0,0,0,0.7);
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 # ==========================================
