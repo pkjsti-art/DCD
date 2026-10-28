@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: PENGHILANG GLITCH SIDEBAR MUTLAK
+# INJEKSI TEMA UI/UX: SIDEBAR FIX & GLASSMORPHISM 3D
 # ==========================================
 st.markdown(f"""
 <style>
@@ -64,13 +64,17 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MEMBUNUH DAN MENYEMBUNYIKAN TOTAL SELURUH TEKS GLITCH DI ATAS SIDEBAR */
-    [data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
-        display: none !important;
+    /* HANYA MENYEMBUNYIKAN TEKS GLITCH DI HEADER TANPA MEMATIKAN TOMBOL COLLAPSE */
+    [data-testid="stSidebar"] header [data-testid="stSidebarHeader"] span,
+    [data-testid="stSidebar"] header button span {{
+        color: transparent !important;
+        font-size: 0px !important;
     }}
     
-    [data-testid="stSidebar"] section > div > div:first-child {{
-        display: none !important;
+    /* Memastikan tombol panah collapse tetap bisa diklik dan terlihat */
+    [data-testid="stSidebar"] header button svg {{
+        fill: #00f3ff !important;
+        display: block !important;
     }}
 
     /* Styling Teks di dalam Sidebar */
