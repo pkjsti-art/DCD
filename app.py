@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: SIDEBAR FIX & GLASSMORPHISM 3D
+# INJEKSI TEMA UI/UX: SIDEBAR GLITCH REMOVER MUTLAK
 # ==========================================
 st.markdown(f"""
 <style>
@@ -64,17 +64,23 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* HANYA MENYEMBUNYIKAN TEKS GLITCH DI HEADER TANPA MEMATIKAN TOMBOL COLLAPSE */
-    [data-testid="stSidebar"] header [data-testid="stSidebarHeader"] span,
-    [data-testid="stSidebar"] header button span {{
-        color: transparent !important;
-        font-size: 0px !important;
+    /* MENGHILANGKAN TEKS "keyboard_double" DENGAN TEKNIK CLIPPING & OVERFLOW HIDDEN */
+    [data-testid="stSidebar"] header {{
+        overflow: hidden !important;
+        height: 40px !important;
     }}
     
-    /* Memastikan tombol panah collapse tetap bisa diklik dan terlihat */
-    [data-testid="stSidebar"] header button svg {{
-        fill: #00f3ff !important;
-        display: block !important;
+    [data-testid="stSidebar"] header button {{
+        position: relative !important;
+        z-index: 10 !important;
+    }}
+
+    /* Menyembunyikan node teks mentah di dalam header sidebar */
+    [data-testid="stSidebar"] header span {{
+        display: inline-block !important;
+        max-width: 0px !important;
+        overflow: hidden !important;
+        text-indent: -9999px !important;
     }}
 
     /* Styling Teks di dalam Sidebar */
