@@ -161,11 +161,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# HEADER DENGAN FRAME KACA 3D (GLASSMORPHISM) & PRESISI TENGAH
+# HEADER DENGAN FRAME KACA 3D & PENYESUAIAN FONT-SIZE SUBTITLE AGAR PRESISI
 st.markdown("""
     <div class="glass-header-card">
         <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.5rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; text-align: center;">DATA CONTROL DYEING (DCD)</h1>
-        <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.05rem; margin-top: 10px; margin-bottom: 0; padding: 0; text-align: center;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+        <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1.2px; font-size: 1.18rem; margin-top: 12px; margin-bottom: 0; padding: 0; text-align: center;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -276,5 +276,5 @@ if menu == "Cross Check Data":
                 data=data_pibc_bodong,
                 file_name="Laporan_Investigasi_Anomali_PG.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="btn_download_pg_missing"
+                key="btn_download_pibc_missing"
             )
