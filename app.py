@@ -19,24 +19,27 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI PRESISI
+# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI PRESISI MUTLAK
 # ==========================================
 st.markdown("""
 <style>
-    /* MEMAKSA BACKGROUND ANIMASI GIF MUNCUL KE DEPAN */
-    [data-testid="stAppViewContainer"] {
-        background-color: transparent !important;
+    /* 1. MEMAKSA BACKGROUND ANIMASI GIF DI LEVEL PALING AKAR */
+    .stApp {
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.90)),
             url("https://i.pinimg.com/originals/2b/bb/68/2bbb68f9a2b535d97ccbb8b0e8b2fb98.gif") !important;
         background-size: cover !important;
         background-position: center !important;
+        background-repeat: no-repeat !important;
         background-attachment: fixed !important;
     }
     
-    /* Menghilangkan background bawaan Streamlit agar GIF tidak tertutup */
-    .stApp, [data-testid="stHeader"] {
-        background: transparent !important;
+    /* 2. MENGHANCURKAN LAPISAN BLOCKER BAWAAN STREAMLIT */
+    [data-testid="stAppViewContainer"], 
+    [data-testid="stHeader"], 
+    .stApp > header {
+        background-color: transparent !important;
+        background-image: none !important;
     }
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
@@ -52,43 +55,9 @@ st.markdown("""
         color: #c9c9e8 !important;
     }
 
-    /* 
-       ======================================
-       KONTROL PRESISI JUDUL (MUTLAK DI TENGAH)
-       ====================================== 
-    */
-    .presisi-tengah {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        text-align: center;
-        margin-bottom: 2rem;
-        margin-top: -2rem; /* Menarik judul sedikit ke atas */
-    }
-    
-    .judul-utama {
-        color: #ffffff;
-        font-family: 'Courier New', Courier, monospace;
-        font-weight: 900;
-        letter-spacing: 3px;
-        font-size: 2.8rem;
-        text-transform: uppercase;
-        margin-bottom: 8px;
-        text-shadow: 
-            0 0 10px #00f3ff, 
-            0 0 20px #00f3ff, 
-            0 0 40px #7f00ff, 
-            0 0 80px #7f00ff;
-    }
-    
-    .sub-judul {
-        color: #b3b3ff;
-        font-weight: bold;
-        letter-spacing: 1px;
-        font-size: 1.1rem;
-        margin: 0;
+    /* Mengurangi jarak kosong di bagian paling atas aplikasi */
+    [data-testid="block-container"] {
+        padding-top: 2rem !important;
     }
 
     /* 
@@ -157,11 +126,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# MENGGUNAKAN HTML RAW UNTUK MEMAKSA PRESISI CENTER
+# MENGGUNAKAN NATIVE HTML UNTUK MEMAKSA TEKS MUTLAK DI TENGAH TANPA TERPENGARUH STREAMLIT PADDING
 st.markdown("""
-<div class="presisi-tengah">
-    <h1 class="judul-utama">DATA CONTROL DYEING (DCD)</h1>
-    <p class="sub-judul">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+<div style="text-align: center; width: 100%; margin-top: -10px; margin-bottom: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+    <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.8rem; text-transform: uppercase; margin-bottom: 8px; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; padding: 0;">DATA CONTROL DYEING (DCD)</h1>
+    <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin: 0; padding: 0;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
 </div>
 """, unsafe_allow_html=True)
 
