@@ -19,29 +19,29 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI & PRESISI CENTER
+# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI & PRESISI MUTLAK
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. MENGATASI BACKGROUND GIF YANG TERTUTUP */
+    /* 1. BACKGROUND GIF SERVER / DATA IT YANG STABIL & BERGERAK */
     [data-testid="stAppViewContainer"] {
         background-image: 
-            linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.90)),
-            url("https://i.gifer.com/Xqg8.gif") !important; /* Tautan GIF yang lebih stabil */
+            linear-gradient(rgba(5, 5, 20, 0.88), rgba(10, 5, 25, 0.92)),
+            url("https://media.giphy.com/media/l38GQqrA43SodP895/giphy.gif") !important;
         background-size: cover !important;
         background-position: center !important;
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
     }
     
-    /* Menghilangkan background bawaan Streamlit agar tembus pandang */
+    /* Menghilangkan background bawaan Streamlit agar transparan */
     .stApp, [data-testid="stHeader"] {
         background: transparent !important;
     }
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
     [data-testid="stSidebar"] {
-        background-color: rgba(5, 5, 15, 0.7) !important;
+        background-color: rgba(5, 5, 15, 0.75) !important;
         backdrop-filter: blur(15px);
         border-right: 2px solid #7f00ff !important;
         box-shadow: 5px 0px 20px rgba(127, 0, 255, 0.3);
@@ -52,7 +52,7 @@ st.markdown("""
         color: #c9c9e8 !important;
     }
 
-    /* Mengurangi jarak kosong di bagian paling atas aplikasi */
+    /* Mengurangi jarak kosong di bagian atas */
     [data-testid="block-container"] {
         padding-top: 2rem !important;
     }
@@ -88,7 +88,7 @@ st.markdown("""
        ====================================== 
     */
     [data-testid="stFileUploadDropzone"] {
-        background-color: rgba(5, 5, 20, 0.6) !important;
+        background-color: rgba(5, 5, 20, 0.7) !important;
         border: 1px dashed #7f00ff !important;
         border-radius: 4px !important;
         box-shadow: 0 0 15px rgba(127, 0, 255, 0.1) inset;
@@ -97,7 +97,7 @@ st.markdown("""
     }
     
     [data-testid="stFileUploadDropzone"]:hover {
-        background-color: rgba(15, 5, 40, 0.8) !important;
+        background-color: rgba(15, 5, 40, 0.85) !important;
         border: 1px dashed #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.3) inset, 0 0 15px rgba(0, 243, 255, 0.3);
     }
@@ -117,16 +117,18 @@ st.markdown("""
         border: 1px solid #00f3ff;
         box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
         border-radius: 4px;
-        background-color: rgba(0,0,0,0.5);
+        background-color: rgba(0,0,0,0.6);
     }
 </style>
 """, unsafe_allow_html=True)
 # ==========================================
 
-# MENGGUNAKAN NATIVE HTML ALIGN AGAR PRESISI CENTER MUTLAK
+# JUDUL UTAMA DENGAN PRESISI TENGAH MUTLAK (BEBAS DARI IKON ANCHOR BAWAAN STREAMLIT)
 st.markdown("""
-    <h1 align="center" style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.8rem; text-transform: uppercase; margin-bottom: 0px; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff;">DATA CONTROL DYEING (DCD)</h1>
-    <p align="center" style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin-top: 10px; margin-bottom: 30px;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+    <div style="width: 100%; text-align: center; margin-top: -10px; margin-bottom: 30px;">
+        <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.6rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; display: inline-block;">DATA CONTROL DYEING (DCD)</h1>
+        <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin-top: 10px; margin-bottom: 0; padding: 0;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+    </div>
 """, unsafe_allow_html=True)
 
 # 1. Inisialisasi Session State agar data tetap tersimpan (STAY) meskipun tombol unduh diklik
