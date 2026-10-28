@@ -19,19 +19,24 @@ st.set_page_config(
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SERVER (ANIMASI GIF + BLUE/PURPLE NEON)
+# INJEKSI TEMA UI/UX: CYBER-SERVER ANIMASI PRESISI
 # ==========================================
 st.markdown("""
 <style>
-    /* Latar Belakang GIF Server IT Bergerak + Overlay Gelap Biru/Ungu */
-    .stApp {
-        background-color: #05050a;
+    /* MEMAKSA BACKGROUND ANIMASI GIF MUNCUL KE DEPAN */
+    [data-testid="stAppViewContainer"] {
+        background-color: transparent !important;
         background-image: 
-            linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.92)),
-            url("https://i.pinimg.com/originals/2b/bb/68/2bbb68f9a2b535d97ccbb8b0e8b2fb98.gif"); /* GIF Animasi Server Data */
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
+            linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.90)),
+            url("https://i.pinimg.com/originals/2b/bb/68/2bbb68f9a2b535d97ccbb8b0e8b2fb98.gif") !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-attachment: fixed !important;
+    }
+    
+    /* Menghilangkan background bawaan Streamlit agar GIF tidak tertutup */
+    .stApp, [data-testid="stHeader"] {
+        background: transparent !important;
     }
     
     /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
@@ -49,41 +54,41 @@ st.markdown("""
 
     /* 
        ======================================
-       JUDUL UTAMA (CENTERED & NEON GLOW) 
+       KONTROL PRESISI JUDUL (MUTLAK DI TENGAH)
        ====================================== 
     */
-    h1 {
-        text-align: center !important;
-        width: 100% !important;
-        color: #ffffff !important;
+    .presisi-tengah {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        text-align: center;
+        margin-bottom: 2rem;
+        margin-top: -2rem; /* Menarik judul sedikit ke atas */
+    }
+    
+    .judul-utama {
+        color: #ffffff;
         font-family: 'Courier New', Courier, monospace;
-        font-weight: 900 !important;
+        font-weight: 900;
         letter-spacing: 3px;
+        font-size: 2.8rem;
         text-transform: uppercase;
-        /* Pendaran (Glow) Biru Cyan ke Ungu */
+        margin-bottom: 8px;
         text-shadow: 
             0 0 10px #00f3ff, 
             0 0 20px #00f3ff, 
             0 0 40px #7f00ff, 
-            0 0 80px #7f00ff !important;
-        margin-bottom: 5px;
+            0 0 80px #7f00ff;
     }
     
-    /* Subjudul / H2 & H3 (Aksen Cyan Panel Kontrol) */
-    h2, h3 {
-        color: #00f3ff !important;
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
-        border-bottom: 1px solid rgba(0, 243, 255, 0.3);
-        padding-bottom: 5px;
-        font-family: 'Courier New', Courier, monospace;
-    }
-    
-    /* Posisi Deskripsi di bawah judul utama ke tengah */
-    [data-testid="stMarkdownContainer"] > p:first-child {
-        text-align: center !important;
-        color: #b3b3ff !important;
+    .sub-judul {
+        color: #b3b3ff;
         font-weight: bold;
         letter-spacing: 1px;
+        font-size: 1.1rem;
+        margin: 0;
     }
 
     /* 
@@ -152,8 +157,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # ==========================================
 
-st.title("DATA CONTROL DYEING (DCD)")
-st.markdown("Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.")
+# MENGGUNAKAN HTML RAW UNTUK MEMAKSA PRESISI CENTER
+st.markdown("""
+<div class="presisi-tengah">
+    <h1 class="judul-utama">DATA CONTROL DYEING (DCD)</h1>
+    <p class="sub-judul">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+</div>
+""", unsafe_allow_html=True)
 
 # 1. Inisialisasi Session State agar data tetap tersimpan (STAY) meskipun tombol unduh diklik
 if 'df_hasil_crosscheck' not in st.session_state:
