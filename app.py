@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBER-SIDEBAR & GLASSMORPHISM 3D
+# INJEKSI TEMA UI/UX: PENGHILANG GLITCH SIDEBAR MUTLAK
 # ==========================================
 st.markdown(f"""
 <style>
@@ -53,11 +53,7 @@ st.markdown(f"""
         background: transparent !important;
     }}
     
-    /* 
-       ======================================
-       MODIFIKASI SIDEBAR Keren & Selaras (Glassmorphism 3D)
-       ====================================== 
-    */
+    /* MODIFIKASI SIDEBAR GLASSMORPHISM 3D */
     [data-testid="stSidebar"] {{
         background: rgba(10, 10, 25, 0.65) !important;
         backdrop-filter: blur(16px);
@@ -68,8 +64,12 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MENYEMBUNYIKAN HEADER SIDEBAR SECARA TOTAL UNTUK MEMBUANG TEKS GLITCH */
-    [data-testid="stSidebar"] header {{
+    /* MEMBUNUH DAN MENYEMBUNYIKAN TOTAL SELURUH TEKS GLITCH DI ATAS SIDEBAR */
+    [data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
+        display: none !important;
+    }}
+    
+    [data-testid="stSidebar"] section > div > div:first-child {{
         display: none !important;
     }}
 
@@ -103,11 +103,7 @@ st.markdown(f"""
         padding-top: 2rem !important;
     }}
 
-    /* 
-       ======================================
-       EFEK KACA 3D (GLASSMORPHISM HEADER CARD)
-       ====================================== 
-    */
+    /* EFEK KACA 3D (GLASSMORPHISM HEADER CARD) */
     .glass-header-card {{
         background: rgba(15, 15, 35, 0.45);
         backdrop-filter: blur(12px);
@@ -127,11 +123,7 @@ st.markdown(f"""
         width: 100%;
     }}
 
-    /* 
-       ======================================
-       TOMBOL KENDALI (INDUSTRIAL NEON)
-       ====================================== 
-    */
+    /* TOMBOL KENDALI (INDUSTRIAL NEON) */
     .stButton > button, [data-testid="stDownloadButton"] > button {{
         background: linear-gradient(45deg, #0d0d26, #1a0033) !important;
         color: #00f3ff !important;
@@ -152,11 +144,7 @@ st.markdown(f"""
         color: #ffffff !important;
     }}
 
-    /* 
-       ======================================
-       AREA UPLOAD FILE (HUD SCANNER)
-       ====================================== 
-    */
+    /* AREA UPLOAD FILE (HUD SCANNER) */
     [data-testid="stFileUploadDropzone"] {{
         background-color: rgba(5, 5, 20, 0.75) !important;
         border: 1px dashed #7f00ff !important;
