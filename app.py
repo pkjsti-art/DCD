@@ -68,15 +68,8 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MEMBATASI DAN MENYEMBUNYIKAN TOTAL TEKS "keyboard_double" DI HEADER SIDEBAR */
-    [data-testid="stSidebar"] header [data-testid="stDecoration"] ~ div,
-    [data-testid="stSidebar"] [data-testid="collapsedControl"] span,
-    [data-testid="stSidebar"] header span {{
-        display: none !important;
-    }}
-    
-    /* Target spesifik untuk teks string glitch di sidebar */
-    [data-testid="stSidebar"] section > div > div > div > span {{
+    /* MENYEMBUNYIKAN HEADER SIDEBAR SECARA TOTAL UNTUK MEMBUANG TEKS GLITCH */
+    [data-testid="stSidebar"] header {{
         display: none !important;
     }}
 
