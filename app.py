@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Fungsi untuk memuat gambar background lokal agar langsung terbaca oleh CSS
+# Fungsi untuk memuat gambar background lokal agar terbaca oleh CSS
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:
@@ -33,11 +33,11 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: DATACENTER BACKGROUND BASE64
+# INJEKSI TEMA UI/UX: GLASSMORPHISM 3D & DATACENTER
 # ==========================================
 st.markdown(f"""
 <style>
-    /* MENGGUNAKAN BASE64 IMAGE AGAR PASTI MUNCUL DI STREAMLIT CLOUD */
+    /* MENGGUNAKAN BACKGROUND DATACENTER LOKAL */
     [data-testid="stAppViewContainer"] {{
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.75), rgba(10, 5, 25, 0.85)),
@@ -69,6 +69,30 @@ st.markdown(f"""
     /* Mengurangi jarak kosong di bagian atas */
     [data-testid="block-container"] {{
         padding-top: 2rem !important;
+    }}
+
+    /* 
+       ======================================
+       EFEK KACA 3D (GLASSMORPHISM HEADER CARD)
+       ====================================== 
+    */
+    .glass-header-card {{
+        background: rgba(15, 15, 35, 0.45);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 16px;
+        border: 1px solid rgba(0, 243, 255, 0.25);
+        padding: 25px 20px;
+        margin-bottom: 35px;
+        box-shadow: 
+            0 8px 32px 0 rgba(0, 0, 0, 0.5),
+            inset 0 1px 1px 0 rgba(255, 255, 255, 0.2),
+            0 0 20px rgba(0, 243, 255, 0.15);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
     }}
 
     /* 
@@ -137,11 +161,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# JUDUL UTAMA DENGAN PRESISI TENGAH MUTLAK
+# HEADER DENGAN FRAME KACA 3D (GLASSMORPHISM) & PRESISI TENGAH
 st.markdown("""
-    <div style="width: 100%; text-align: center; margin-top: -10px; margin-bottom: 30px;">
-        <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.6rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; display: inline-block;">DATA CONTROL DYEING (DCD)</h1>
-        <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; margin-top: 10px; margin-bottom: 0; padding: 0;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
+    <div class="glass-header-card">
+        <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.5rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; text-align: center;">DATA CONTROL DYEING (DCD)</h1>
+        <p style="color: #b3b3ff; font-weight: bold; letter-spacing: 1px; font-size: 1.05rem; margin-top: 10px; margin-bottom: 0; padding: 0; text-align: center;">Sistem pengecekan dan rekonsiliasi data produksi secara otomatis dan terintegrasi.</p>
     </div>
 """, unsafe_allow_html=True)
 
