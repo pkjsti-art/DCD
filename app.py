@@ -1,96 +1,102 @@
-import streamlit as st
-import pandas as pd
-from modules.cleaner import bersihkan_master_mb, bersihkan_master_pibc, bersihkan_master_pg
-from modules.processor import (
-    siapkan_kolom_standar, 
-    jalankan_proses_crosscheck, 
-    buat_excel_hasil_keseluruhan,
-    buat_excel_rekap_audit,
-    buat_excel_investigasi_pibc,
-    buat_excel_investigasi_pg
-)
-import io
-import base64
 
-# Konfigurasi Halaman (Harus selalu di paling atas)
-st.set_page_config(
-    page_title="Data Control Dyeing (DCD)",
-    page_icon="🖥️",
-    layout="wide"
-)
+st.sidebar.markdown("### ⚡ Navigasi Menu")
+menu = st.sidebar.selectbox("Pilih Menu", ["Cross Check Data"])
 
-# Fungsi untuk memuat gambar background lokal agar terbaca oleh CSS
-def get_base64_of_bin_file(bin_file):
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except:
-        return ""
-
-# Membaca file bg_datacenter.png secara lokal
-bin_str = get_base64_of_bin_file('bg_datacenter.png')
-bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
-
-# ==========================================
-# INJEKSI TEMA UI/UX: STABIL & BERSIH TANPA KORBAN TOMBOL
-# ==========================================
-st.markdown(f"""
-<style>
-    /* MENGGUNAKAN BACKGROUND DATACENTER LOKAL */
-    [data-testid="stAppViewContainer"] {{
-        background-image: 
-            linear-gradient(rgba(5, 5, 20, 0.75), rgba(10, 5, 25, 0.85)),
-            url("{bg_css}") !important;
-        background-size: cover !important;
-        background-position: center !important;
-        background-repeat: no-repeat !important;
-        background-attachment: fixed !important;
-    }}
+if menu == "Cross Check Data":
+    st.subheader("Upload Dokumen Master Data")
     
-    /* Menghilangkan background bawaan Streamlit agar transparan */
-    .stApp, [data-testid="stHeader"] {{
-        background: transparent !important;
-    }}
-    
-    /* MODIFIKASI SIDEBAR GLASSMORPHISM 3D */
-    [data-testid="stSidebar"] {{
-        background: rgba(10, 10, 25, 0.65) !important;
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border-right: 1px solid rgba(0, 243, 255, 0.3) !important;
-        box-shadow: 
-            5px 0px 30px rgba(127, 0, 255, 0.25),
-            inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
-    }}
+    col1, col2 = st.columns(2)
+    with col1:
+        uploaded_mb = st.file_uploader("Upload File Master MB (Bisa Pilih Banyak)", type=["xlsx", "xls"], accept_multiple_files=True)
+        uploaded_pibc = st.file_uploader("Upload File Master PIBC / Dyelot", type=["xlsx", "xls"])
+    with col2:
+        uploaded_pg = st.file_uploader("Upload File Master PG / Pindah Gudang (Bisa Pilih Banyak)", type=["xlsx", "xls"], accept_multiple_files=True)
+        
+    if st.button("Proses Data Sekarang", type="primary"):
+        if uploaded_mb and uploaded_pibc:
+            with st.spinner("Sedang membersihkan dan memproses crosscheck data..."):
+                # 1. Bersihkan Data Master
+                df_pibc_bersih = bersihkan_master_pibc(uploaded_pibc)
+                
+                df_pg_bersih = None
+                if uploaded_pg:
+                    df_pg_bersih = bersihkan_master_pg(uploaded_pg) 
+                
+                # 2. Proses dan Gabungkan File Master MB
+                df_gabung_list = []
+                for file_mb in uploaded_mb:
+                    df_bersih = bersihkan_master_mb(file_mb)
+                    df_siap = siapkan_kolom_standar(df_bersih)
+                    df_gabung_list.append(df_siap)
+                
+                df_final_mb = pd.concat(df_gabung_list, ignore_index=True)
+                
+                # 3. Jalankan Eksekusi Logika Utama
+                df_hasil = jalankan_proses_crosscheck(df_final_mb, df_pibc_bersih, df_pg_bersih)
+                
+                # SIMPAN HASIL KE SESSION STATE
+                st.session_state['df_hasil_crosscheck'] = df_hasil
+                st.session_state['df_pibc_bersih'] = df_pibc_bersih
+                st.session_state['df_pg_bersih'] = df_pg_bersih
+                
+                st.success("Proses pengecekan selesai sepenuhnya!")
+        else:
+            st.warning("Mohon upload setidaknya file Master MB dan Master PIBC terlebih dahulu.")
 
-    /* Styling label sidebar tanpa mengubah font ikon Streamlit */
-    [data-testid="stSidebar"] label {{
-        color: #00f3ff !important;
-        font-family: 'Courier New', Courier, monospace;
-        letter-spacing: 1px;
-    }}
+    # 2. TAMPILAN STAY: Mengambil data dari Session State
+    if st.session_state['df_hasil_crosscheck'] is not None:
+        df_hasil = st.session_state['df_hasil_crosscheck']
+        df_pibc_b = st.session_state['df_pibc_bersih']
+        df_pg_b = st.session_state['df_pg_bersih']
 
-    /* Jangan mengubah font seluruh span/header sidebar.
-       Streamlit dapat memakai elemen tersebut untuk merender ikon. */
+        st.markdown("---")
+        st.subheader("Tabel Hasil Cross Check Data")
+        st.dataframe(df_hasil, use_container_width=True)
+        
+        st.subheader("Pusat Unduhan (Download Center)")
+        col_dl1, col_dl2 = st.columns(2)
+        col_dl3, col_dl4 = st.columns(2)
+        
+        # Generator File Unduhan 1: Keseluruhan Hasil
+        data_all = buat_excel_hasil_keseluruhan(df_hasil)
+        with col_dl1:
+            st.download_button(
+                label="📥 Unduh Hasil Cross Check Keseluruhan",
+                data=data_all,
+                file_name="Hasil_Crosscheck_DCD_Lengkap.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_all"
+            )
+        
+        # Generator File Unduhan 2: Laporan Audit 4 Sheet Terstruktur & Berwarna
+        data_audit = buat_excel_rekap_audit(df_hasil)
+        with col_dl2:
+            st.download_button(
+                label="📥 Unduh Laporan Audit & Temuan (4 Sheet)",
+                data=data_audit,
+                file_name="Rekap_Audit_Temuan_DCD.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_audit"
+            )
 
-    /* Kotak Pilihan Menu (Selectbox) di Sidebar agar Senada */
-    [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
-        background-color: rgba(15, 15, 35, 0.8) !important;
-        border: 1px solid rgba(0, 243, 255, 0.4) !important;
-        border-radius: 8px !important;
-        color: #ffffff !important;
-        box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.1);
-    }}
+        # Generator File Unduhan 3: Laporan Investigasi Anomali PIBC
+        data_pibc_bodong = buat_excel_investigasi_pibc(df_hasil, df_pibc_b)
+        with col_dl3:
+            st.download_button(
+                label="📥 Unduh Laporan Investigasi Anomali PIBC",
+                data=data_pibc_bodong,
+                file_name="Laporan_Investigasi_Anomali_PIBC.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_pibc_missing"
+            )
 
-    [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
-        fill: #00f3ff !important;
-    }}
-    
-    /* Warna Teks Umum */
-    p, span, label, .stMarkdown, .stText {{
-        color: #c9c9e8 !important;
-    }}
-
-    /* Mengurangi jarak kosong di bagian atas */
-    [data-testid="block-container"] {{
+        # Generator File Unduhan 4: Laporan Investigasi Anomali PG
+        data_pg_bodong = buat_excel_investigasi_pg(df_hasil, df_pg_b)
+        with col_dl4:
+            st.download_button(
+                label="📥 Unduh Laporan Investigasi Anomali PG",
+                data=data_pg_bodong,
+                file_name="Laporan_Investigasi_Anomali_PG.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="btn_download_pg_missing"
+            )
