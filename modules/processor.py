@@ -161,8 +161,9 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'RND') : {base_err}"
             
         if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-            if has_retur_lab or (is_to and has_lab): return 'CLEAN'
-            return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'LAB') : {base_err}"
+            # UPDATE DI SINI: Menambahkan aturan (is_to and has_rnd) menjadi CLEAN
+            if has_retur_lab or (is_to and has_lab) or (is_to and has_rnd): return 'CLEAN'
+            return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'LAB'/'RND') : {base_err}"
             
         return base_err
             
