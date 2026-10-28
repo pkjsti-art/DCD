@@ -14,41 +14,42 @@ import io
 # Konfigurasi Halaman (Harus selalu di paling atas)
 st.set_page_config(
     page_title="Data Control Dyeing (DCD)",
-    page_icon="🧪",
+    page_icon="⚙️",
     layout="wide"
 )
 
 # ==========================================
-# INJEKSI TEMA UI/UX: CYBERPUNK COLORFUL & CENTERED GLOW
+# INJEKSI TEMA UI/UX: CYBER-INDUSTRIAL (BLUE & PURPLE NEON)
 # ==========================================
 st.markdown("""
 <style>
-    /* Latar Belakang Rame (Ada efek semburat cahaya Pink & Cyan) */
+    /* Latar Belakang Wallpaper Manufaktur + Overlay Gelap Biru/Ungu */
     .stApp {
-        background-color: #05050A;
+        background-color: #05050a;
         background-image: 
-            radial-gradient(circle at 10% 20%, rgba(255, 0, 128, 0.15) 0%, transparent 40%),
-            radial-gradient(circle at 90% 80%, rgba(0, 243, 255, 0.15) 0%, transparent 40%),
-            linear-gradient(180deg, #05050A 0%, #0a0a14 100%);
+            linear-gradient(rgba(5, 5, 20, 0.85), rgba(15, 5, 30, 0.92)),
+            url("https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=2000&auto=format&fit=crop");
+        background-size: cover;
+        background-position: center;
         background-attachment: fixed;
     }
     
-    /* Modifikasi Sidebar (Transparan dengan Glow) */
+    /* Modifikasi Sidebar (Transparan Kaca dengan Glow Biru/Ungu) */
     [data-testid="stSidebar"] {
-        background-color: rgba(5, 5, 10, 0.8) !important;
-        backdrop-filter: blur(10px);
-        border-right: 2px solid #ff007f !important;
-        box-shadow: 5px 0px 20px rgba(255, 0, 127, 0.4);
+        background-color: rgba(5, 5, 15, 0.7) !important;
+        backdrop-filter: blur(15px);
+        border-right: 2px solid #7f00ff !important;
+        box-shadow: 5px 0px 20px rgba(127, 0, 255, 0.3);
     }
     
     /* Warna Teks Umum */
-    p, span, label, .stMarkdown {
-        color: #d1d1e0 !important;
+    p, span, label, .stMarkdown, .stText {
+        color: #c9c9e8 !important;
     }
 
     /* 
        ======================================
-       JUDUL UTAMA (CENTERED & SUPER GLOWING) 
+       JUDUL UTAMA (CENTERED & NEON GLOW) 
        ====================================== 
     */
     h1 {
@@ -57,75 +58,77 @@ st.markdown("""
         color: #ffffff !important;
         font-family: 'Courier New', Courier, monospace;
         font-weight: 900 !important;
-        letter-spacing: 4px;
+        letter-spacing: 3px;
         text-transform: uppercase;
-        /* Efek Menyala (Glow) Berlapis */
+        /* Pendaran (Glow) Biru Cyan ke Ungu */
         text-shadow: 
-            0 0 10px #ff007f, 
-            0 0 20px #ff007f, 
-            0 0 40px #ff007f, 
-            0 0 80px #bf00ff !important;
-        margin-bottom: 10px;
+            0 0 10px #00f3ff, 
+            0 0 20px #00f3ff, 
+            0 0 40px #7f00ff, 
+            0 0 80px #7f00ff !important;
+        margin-bottom: 5px;
     }
     
-    /* Subjudul / H2 & H3 */
+    /* Subjudul / H2 & H3 (Aksen Cyan Panel Kontrol) */
     h2, h3 {
         color: #00f3ff !important;
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.8);
+        text-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
         border-bottom: 1px solid rgba(0, 243, 255, 0.3);
         padding-bottom: 5px;
+        font-family: 'Courier New', Courier, monospace;
     }
     
     /* Posisi Deskripsi di bawah judul utama ke tengah */
     [data-testid="stMarkdownContainer"] > p:first-child {
         text-align: center !important;
-        color: #00f3ff !important;
+        color: #b3b3ff !important;
         font-weight: bold;
         letter-spacing: 1px;
     }
 
     /* 
        ======================================
-       TOMBOL COLORFUL (GRADIENT & GLOW)
+       TOMBOL KENDALI (INDUSTRIAL NEON)
        ====================================== 
     */
     .stButton > button, [data-testid="stDownloadButton"] > button {
-        background: linear-gradient(45deg, #ff007f, #7f00ff) !important;
-        color: #ffffff !important;
-        border: 2px solid #ff007f !important;
-        border-radius: 8px !important;
+        background: linear-gradient(45deg, #0d0d26, #1a0033) !important;
+        color: #00f3ff !important;
+        border: 1px solid #00f3ff !important;
+        border-radius: 4px !important; /* Sudut lebih tajam/kaku khas mesin */
         padding: 10px 24px !important;
         font-weight: 900 !important;
         letter-spacing: 1px;
-        box-shadow: 0 0 15px rgba(255, 0, 127, 0.5) !important;
+        text-transform: uppercase;
+        box-shadow: 0 0 10px rgba(0, 243, 255, 0.3) inset, 0 0 10px rgba(0, 243, 255, 0.3) !important;
         transition: all 0.3s ease-in-out;
     }
     
     .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
-        background: linear-gradient(45deg, #00f3ff, #007fff) !important;
-        border: 2px solid #00f3ff !important;
-        box-shadow: 0 0 25px rgba(0, 243, 255, 0.8), 0 0 40px rgba(0, 127, 255, 0.5) !important;
-        transform: scale(1.05);
+        background: linear-gradient(45deg, #0033aa, #7f00ff) !important;
+        border: 1px solid #00f3ff !important;
+        box-shadow: 0 0 20px rgba(0, 243, 255, 0.8), 0 0 30px rgba(127, 0, 255, 0.6) !important;
         color: #ffffff !important;
     }
 
     /* 
        ======================================
-       AREA UPLOAD FILE (CYBERPUNK BOX)
+       AREA UPLOAD FILE (HUD SCANNER)
        ====================================== 
     */
     [data-testid="stFileUploadDropzone"] {
-        background-color: rgba(10, 10, 25, 0.6) !important;
-        border: 2px dashed #00f3ff !important;
-        border-radius: 12px !important;
-        box-shadow: 0 0 15px rgba(0, 243, 255, 0.2) inset, 0 0 15px rgba(0, 243, 255, 0.2);
+        background-color: rgba(5, 5, 20, 0.6) !important;
+        border: 1px dashed #7f00ff !important;
+        border-radius: 4px !important;
+        box-shadow: 0 0 15px rgba(127, 0, 255, 0.1) inset;
+        backdrop-filter: blur(5px);
         transition: all 0.3s ease;
     }
     
     [data-testid="stFileUploadDropzone"]:hover {
-        background-color: rgba(30, 10, 40, 0.8) !important;
-        border: 2px dashed #ff007f !important;
-        box-shadow: 0 0 25px rgba(255, 0, 127, 0.5) inset, 0 0 25px rgba(255, 0, 127, 0.5);
+        background-color: rgba(15, 5, 40, 0.8) !important;
+        border: 1px dashed #00f3ff !important;
+        box-shadow: 0 0 20px rgba(0, 243, 255, 0.3) inset, 0 0 15px rgba(0, 243, 255, 0.3);
     }
     
     [data-testid="stFileUploadDropzone"] * {
@@ -134,15 +137,16 @@ st.markdown("""
 
     /* Garis pembatas (Divider) */
     hr {
-        border-top: 2px solid #bf00ff !important;
-        box-shadow: 0px 0px 15px #bf00ff;
+        border-top: 1px solid #7f00ff !important;
+        box-shadow: 0px 0px 10px #7f00ff;
     }
 
-    /* Tabel Dataframe */
+    /* Tabel Dataframe (Monitor Display) */
     [data-testid="stDataFrame"] {
-        border: 2px solid #7f00ff;
-        box-shadow: 0 0 20px rgba(127, 0, 255, 0.4);
-        border-radius: 8px;
+        border: 1px solid #00f3ff;
+        box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+        border-radius: 4px;
+        background-color: rgba(0,0,0,0.5);
     }
 </style>
 """, unsafe_allow_html=True)
