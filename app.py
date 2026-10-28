@@ -33,7 +33,7 @@ bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
 # ==========================================
-# INJEKSI TEMA UI/UX: SIDEBAR GLITCH REMOVER MUTLAK
+# INJEKSI TEMA UI/UX: PEMBUNUH GLITCH HOVER SIDEBAR MUTLAK
 # ==========================================
 st.markdown(f"""
 <style>
@@ -64,23 +64,20 @@ st.markdown(f"""
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
 
-    /* MENGHILANGKAN TEKS "keyboard_double" DENGAN TEKNIK CLIPPING & OVERFLOW HIDDEN */
-    [data-testid="stSidebar"] header {{
+    /* MEMBUNUH TOOLTIP / TEKS HOVER GLITCH DI TOMBOL SIDEBAR SECARA TOTAL */
+    [data-testid="stSidebar"] header button {{
         overflow: hidden !important;
-        height: 40px !important;
     }}
     
-    [data-testid="stSidebar"] header button {{
-        position: relative !important;
-        z-index: 10 !important;
+    [data-testid="stSidebar"] header button span, 
+    [data-testid="stSidebar"] header [data-testid="stSidebarHeader"] span,
+    [data-testid="stSidebar"] header [title] {{
+        display: none !important;
     }}
 
-    /* Menyembunyikan node teks mentah di dalam header sidebar */
-    [data-testid="stSidebar"] header span {{
-        display: inline-block !important;
-        max-width: 0px !important;
-        overflow: hidden !important;
-        text-indent: -9999px !important;
+    /* Menghilangkan atribut title (tooltip bawaan) pada tombol header sidebar */
+    [data-testid="stSidebar"] header button::after {{
+        content: "" !important;
     }}
 
     /* Styling Teks di dalam Sidebar */
