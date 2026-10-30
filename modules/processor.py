@@ -448,7 +448,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     tg_sti = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
                     ada_keyword_selisih_sti = any(kw in nama_brg_jdi_sti or kw in tg_sti.upper() for kw in keyword_selisih)
                     
-                    if abs(selisih_sti) <= 0.01:
+                    # MODIFIKASI BATAS TOLERANSI DYEING STI MENJADI MUTLAK 0
+                    if selisih_sti == 0.0:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
@@ -511,7 +512,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
                     
-                    if abs(selisih_total) <= 0.01: 
+                    # MODIFIKASI BATAS TOLERANSI BENANG MENJADI MUTLAK 0
+                    if selisih_total == 0.0: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
@@ -567,8 +569,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
-                        status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if abs(sel_pibc) <= 0.01 else "SELISIH")
-                        status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if abs(sel_pg) <= 0.01 else "SELISIH")
+                        # MODIFIKASI BATAS TOLERANSI PIBC & PG MENJADI MUTLAK 0
+                        status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if sel_pibc == 0.0 else "SELISIH")
+                        status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if sel_pg == 0.0 else "SELISIH")
 
                         if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
                             df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
