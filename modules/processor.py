@@ -161,7 +161,6 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'RND') : {base_err}"
             
         if ki.startswith('TWP.999') and kb.startswith('TWP.999'):
-            # UPDATE DI SINI: Menambahkan aturan (is_to and has_rnd) menjadi CLEAN
             if has_retur_lab or (is_to and has_lab) or (is_to and has_rnd): return 'CLEAN'
             return f"KURANG KEYWORD 'RETUR' ATAU (TO + 'LAB'/'RND') : {base_err}"
             
@@ -448,8 +447,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     tg_sti = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
                     ada_keyword_selisih_sti = any(kw in nama_brg_jdi_sti or kw in tg_sti.upper() for kw in keyword_selisih)
                     
-                    # MODIFIKASI BATAS TOLERANSI DYEING STI MENJADI MUTLAK 0
-                    if selisih_sti == 0.0:
+                    # TOLERANSI DYEING STI: <= 0.009 (Selisih 0.01 = SALAH, tapi 0.001 sampai 0.009 = MATCH)
+                    if abs(selisih_sti) < 0.01:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
@@ -512,8 +511,8 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
                     
-                    # MODIFIKASI BATAS TOLERANSI BENANG MENJADI MUTLAK 0
-                    if selisih_total == 0.0: 
+                    # TOLERANSI BENANG: <= 0.009 (Selisih 0.01 = SALAH, tapi 0.001 sampai 0.009 = MATCH)
+                    if abs(selisih_total) < 0.01: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
@@ -569,9 +568,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
 
-                        # MODIFIKASI BATAS TOLERANSI PIBC & PG MENJADI MUTLAK 0
-                        status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if sel_pibc == 0.0 else "SELISIH")
-                        status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if sel_pg == 0.0 else "SELISIH")
+                        # TOLERANSI PIBC & PG: <= 0.009 (Selisih 0.01 = SALAH, tapi 0.001 sampai 0.009 = MATCH)
+                        status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if abs(sel_pibc) < 0.01 else "SELISIH")
+                        status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if abs(sel_pg) < 0.01 else "SELISIH")
 
                         if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
                             df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
