@@ -446,7 +446,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     tg_sti = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
                     ada_keyword_selisih_sti = any(kw in nama_brg_jdi_sti or kw in tg_sti.upper() for kw in keyword_selisih)
                     
-                    # SANITASI: Anggap mutlak 0 jika selisih ada di rentang 0.001 - 0.009
                     if abs(selisih_sti) <= 0.009:
                         selisih_sti = 0.0
                         
@@ -514,7 +513,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if not benang_status_rendered:
                     selisih_total = round(total_bb_benang_grup - target_gr_utama_grup, 3)
                     
-                    # SANITASI: Anggap mutlak 0 jika selisih ada di rentang 0.001 - 0.009
                     if abs(selisih_total) <= 0.009:
                         selisih_total = 0.0
                         
@@ -570,7 +568,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             df_mb.at[idx, 'Qty PIBC'] = qty_pibc_total
                             sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             
-                            # SANITASI: Anggap mutlak 0 jika selisih ada di rentang 0.001 - 0.009
                             if abs(sel_pibc) <= 0.009:
                                 sel_pibc = 0.0
                                 
@@ -581,7 +578,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             df_mb.at[idx, 'Qty PG'] = qty_pg_total
                             sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             
-                            # SANITASI: Anggap mutlak 0 jika selisih ada di rentang 0.001 - 0.009
                             if abs(sel_pg) <= 0.009:
                                 sel_pg = 0.0
                                 
@@ -653,8 +649,14 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     
     wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
     
-    # KOLOM YANG HARUS DI-FORMAT NUMBER MUTLAK
-    num_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
+    # FUNGSI DINAMIS: Mendeteksi nama kolom asli yang mengandung unsur Qty, Harga, Total, Target, Selisih, dll
+    def is_numeric_col(c_name):
+        c = str(c_name).lower()
+        kw = ['qty', 'harga', 'total', 'target', 'selisih', 'actual', 'jumlah', 'amount']
+        # Hindari salah deteksi pada kolom keterangan
+        if 'unit' in c or 'satuan' in c or 'crosscheck' in c or 'status' in c or 'keterangan' in c or 'info' in c:
+            return False
+        return any(k in c for k in kw)
 
     for col_idx, col_name in enumerate(df.columns, start=1):
         cell = ws.cell(row=1, column=col_idx)
@@ -696,13 +698,25 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
             else:
                 cell.alignment = std_alignment
                 
-            # INJEKSI FORMAT NUMBER EXCEL
-            if col_name in num_cols and cell.value is not None:
+            # INJEKSI FORMAT NUMBER EXCEL DINAMIS KE SEMUA KOLOM ANGKA (Termasuk Bawaan Mentah MB)
+            if is_numeric_col(col_name) and cell.value is not None and str(cell.value).strip() != '':
                 try:
-                    cell.value = float(cell.value)
-                    cell.number_format = '#,##0.000' # Memaksa format 3 angka desimal Number Excel
+                    # Bersihkan teks "39.870,00" menjadi angka desimal murni Python (39870.00)
+                    if isinstance(cell.value, str):
+                        val_str = str(cell.value).strip().replace('.', '').replace(',', '.')
+                        val_float = float(val_str)
+                    else:
+                        val_float = float(cell.value)
+                        
+                    cell.value = val_float
+                    
+                    # Berikan 2 desimal untuk Harga/Total, dan 3 desimal untuk Qty/Selisih
+                    if 'harga' in str(col_name).lower() or 'total' in str(col_name).lower():
+                        cell.number_format = '#,##0.00'
+                    else:
+                        cell.number_format = '#,##0.000'
                 except:
-                    pass
+                    pass # Biarkan sebagai teks jika bukan angka (misal judul grup "Total Pekerjaan")
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
