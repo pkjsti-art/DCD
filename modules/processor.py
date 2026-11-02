@@ -640,6 +640,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         
     df_mb = df_mb[cols]
 
+    # PAKSA KOLOM ANGKA MENJADI TIPE FLOAT SEBELUM KE EXCEL
+    for c in group_cols:
+        if c in df_mb.columns:
+            df_mb[c] = pd.to_numeric(df_mb[c], errors='coerce')
+
     return df_mb
 
 def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
@@ -648,6 +653,9 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     
     wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
     
+    # KOLOM YANG HARUS DI-FORMAT NUMBER MUTLAK
+    num_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
+
     for col_idx, col_name in enumerate(df.columns, start=1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
@@ -681,12 +689,20 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         fill_to_apply = color_fills[color_index]
         for c_idx, cell in enumerate(row, start=1):
             cell.fill = fill_to_apply
-            
             col_name = df.columns[c_idx - 1]
+            
             if col_name in wrap_cols:
                 cell.alignment = wrap_alignment
             else:
                 cell.alignment = std_alignment
+                
+            # INJEKSI FORMAT NUMBER EXCEL
+            if col_name in num_cols and cell.value is not None:
+                try:
+                    cell.value = float(cell.value)
+                    cell.number_format = '#,##0.000' # Memaksa format 3 angka desimal Number Excel
+                except:
+                    pass
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
