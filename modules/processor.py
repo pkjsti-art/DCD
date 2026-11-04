@@ -80,18 +80,15 @@ def ekstrak_pibc_to(teks_filtered):
     teks_str = str(teks_filtered)
     hasil = []
     
-    # 1. Aturan Lama: Cari di dalam kurung
     chunks_kurung = re.findall(r'\([^)]*(?:\)|$)', teks_str)
     for chunk in chunks_kurung:
         hasil.extend(re.findall(POLA_PIBC, chunk, re.IGNORECASE))
             
-    # 2. Aturan Lama: Cari setelah kata TO (Hanya jika Langkah 1 tidak menemukan PIBC)
     if not hasil and re.search(r'\bTO\b', teks_str, re.IGNORECASE):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
             hasil.extend(re.findall(POLA_PIBC, parts[-1], re.IGNORECASE))
             
-    # 3. [ATURAN BARU / JARING PENGAMAN]: Jika Langkah 1 dan 2 KOSONG, langsung jalankan ekstraksi normal untuk SELURUH kalimat
     if not hasil:
         hasil.extend(re.findall(POLA_PIBC, teks_str, re.IGNORECASE))
         
@@ -364,7 +361,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         total_bb_benang_grup = 0.0
         rincian_benang_list = []
         item_qty_dalam_transaksi = {} 
-        item_target_dalam_transaksi = {} # DIGUNAKAN UNTUK MENJUMLAHKAN TARGET QTY BILA OBAT DITULIS BERULANG
+        item_target_dalam_transaksi = {}
         
         teks_gab_group = ""
         gudang_group = ""
@@ -398,7 +395,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     val_tgt = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     k_item_upper = kode_item.upper()
                     
-                    # LOGIKA PENJUMLAHAN AKUMULASI (TARGET & BB STANDAR)
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
                     item_target_dalam_transaksi[k_item_upper] = round(item_target_dalam_transaksi.get(k_item_upper, 0.0) + val_tgt, 3)
 
@@ -454,7 +450,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     if abs(selisih_sti) <= 0.009:
                         selisih_sti = 0.0
                         
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_sti
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = float(selisih_sti)
                     
                     if selisih_sti == 0.0:
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
@@ -521,7 +517,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     if abs(selisih_total) <= 0.009:
                         selisih_total = 0.0
                         
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = selisih_total
+                    df_mb.at[idx, 'Selisih Benang (GR)'] = float(selisih_total)
                     
                     if selisih_total == 0.0: 
                         df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
@@ -532,28 +528,26 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             else:
                 k_item_upper = kode_item.upper()
                 if k_item_upper not in obat_rendered_set:
+                    # INI ADALAH BARIS KEMUNCULAN PERTAMA: KITA TIMPA ANGKA MENTAH DENGAN TOTAL AGREGAT
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     qty_tgt_baris = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
                         qty_tgt_cek = qty_tgt_baris
-                        df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
                         qty_tgt_cek = round(item_target_dalam_transaksi.get(k_item_upper, qty_tgt_baris), 3)
 
-                    # --- INJEKSI PERBAIKAN VISUAL AGREGAT (Ubah angka baris pertama jadi nilai TOTAL) ---
+                    # ------ INJEKSI PENIMPAAN MUTLAK KE DALAM DATAFRAME ------
+                    df_mb.at[idx, 'Qty BB Standar (GR)'] = float(qty_bb_cek)
+                    df_mb.at[idx, 'Qty Target Standar (GR)'] = float(qty_tgt_cek)
+
                     if qty_bb_cek != qty_bb_baris or qty_tgt_cek != qty_tgt_baris:
-                        df_mb.at[idx, 'Qty BB Standar (GR)'] = qty_bb_cek
-                        df_mb.at[idx, 'Qty Target Standar (GR)'] = qty_tgt_cek
-                        
-                        info_existing = str(df_mb.at[idx, 'Info Celup Gabung']).strip()
-                        if not info_existing:
-                            df_mb.at[idx, 'Info Celup Gabung'] = "Akumulasi Multi-Baris"
-                        elif "Akumulasi" not in info_existing:
-                            df_mb.at[idx, 'Info Celup Gabung'] = info_existing + " | Akumulasi Multi-Baris"
-                    # ------------------------------------------------------------------------------------
+                        info_ex = str(df_mb.at[idx, 'Info Celup Gabung']).strip()
+                        if "Akumulasi" not in info_ex:
+                            df_mb.at[idx, 'Info Celup Gabung'] = info_ex + " | Akumulasi Multi-Baris" if info_ex else "Akumulasi Multi-Baris"
+                    # ---------------------------------------------------------
 
                     if len(pibc_list_grup) > 0:
                         qty_pibc_total = 0.0
@@ -585,23 +579,23 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         
                         if found_in_pibc:
                             qty_pibc_total = round(qty_pibc_total, 3)
-                            df_mb.at[idx, 'Qty PIBC'] = qty_pibc_total
+                            df_mb.at[idx, 'Qty PIBC'] = float(qty_pibc_total)
                             sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             
                             if abs(sel_pibc) <= 0.009:
                                 sel_pibc = 0.0
                                 
-                            df_mb.at[idx, 'Selisih PIBC (GR)'] = sel_pibc
+                            df_mb.at[idx, 'Selisih PIBC (GR)'] = float(sel_pibc)
                             
                         if found_in_pg:
                             qty_pg_total = round(qty_pg_total, 3)
-                            df_mb.at[idx, 'Qty PG'] = qty_pg_total
+                            df_mb.at[idx, 'Qty PG'] = float(qty_pg_total)
                             sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             
                             if abs(sel_pg) <= 0.009:
                                 sel_pg = 0.0
                                 
-                            df_mb.at[idx, 'Selisih PG (GR)'] = sel_pg
+                            df_mb.at[idx, 'Selisih PG (GR)'] = float(sel_pg)
 
                         status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if sel_pibc == 0.0 else "SELISIH")
                         status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if sel_pg == 0.0 else "SELISIH")
@@ -619,6 +613,15 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
                     
                     obat_rendered_set.add(k_item_upper)
+                else:
+                    # ------ INJEKSI BARIS KEDUA (DUPLIKAT) ------
+                    # Mengosongkan angka di baris duplikat agar tidak mengecoh pembaca
+                    df_mb.at[idx, 'Qty BB Standar (GR)'] = None
+                    df_mb.at[idx, 'Qty Target Standar (GR)'] = None
+                    df_mb.at[idx, 'Crosscheck Qty'] = 'DIABAIKAN (SUDAH DIGABUNG KE BARIS ATAS)'
+                    df_mb.at[idx, 'Selisih PIBC (GR)'] = None
+                    df_mb.at[idx, 'Selisih PG (GR)'] = None
+                    # --------------------------------------------
 
             is_first_row = False
 
