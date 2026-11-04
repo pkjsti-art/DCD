@@ -636,7 +636,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         
     df_mb = df_mb[cols]
 
-    # PAKSA KOLOM ANGKA MENJADI TIPE FLOAT SEBELUM KE EXCEL
     for c in group_cols:
         if c in df_mb.columns:
             df_mb[c] = pd.to_numeric(df_mb[c], errors='coerce')
@@ -649,11 +648,9 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     
     wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
     
-    # FUNGSI DINAMIS: Mendeteksi nama kolom asli yang mengandung unsur Qty, Harga, Total, Target, Selisih, dll
     def is_numeric_col(c_name):
         c = str(c_name).lower()
         kw = ['qty', 'harga', 'total', 'target', 'selisih', 'actual', 'jumlah', 'amount']
-        # Hindari salah deteksi pada kolom keterangan
         if 'unit' in c or 'satuan' in c or 'crosscheck' in c or 'status' in c or 'keterangan' in c or 'info' in c:
             return False
         return any(k in c for k in kw)
@@ -698,10 +695,8 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
             else:
                 cell.alignment = std_alignment
                 
-            # INJEKSI FORMAT NUMBER EXCEL DINAMIS KE SEMUA KOLOM ANGKA (Termasuk Bawaan Mentah MB)
             if is_numeric_col(col_name) and cell.value is not None and str(cell.value).strip() != '':
                 try:
-                    # Bersihkan teks "39.870,00" menjadi angka desimal murni Python (39870.00)
                     if isinstance(cell.value, str):
                         val_str = str(cell.value).strip().replace('.', '').replace(',', '.')
                         val_float = float(val_str)
@@ -710,13 +705,13 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                         
                     cell.value = val_float
                     
-                    # Berikan 2 desimal untuk Harga/Total, dan 3 desimal untuk Qty/Selisih
-                    if 'harga' in str(col_name).lower() or 'total' in str(col_name).lower():
-                        cell.number_format = '#,##0.00'
-                    else:
+                    # PERBAIKAN FORMAT: Hanya 'selisih' yang 3 angka koma, sisanya kembali ke 2 angka koma
+                    if 'selisih' in str(col_name).lower():
                         cell.number_format = '#,##0.000'
+                    else:
+                        cell.number_format = '#,##0.00'
                 except:
-                    pass # Biarkan sebagai teks jika bukan angka (misal judul grup "Total Pekerjaan")
+                    pass
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
