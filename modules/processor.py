@@ -364,6 +364,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         total_bb_benang_grup = 0.0
         rincian_benang_list = []
         item_qty_dalam_transaksi = {} 
+        item_target_dalam_transaksi = {} # DIGUNAKAN UNTUK MENJUMLAHKAN TARGET QTY BILA OBAT DITULIS BERULANG
         
         teks_gab_group = ""
         gudang_group = ""
@@ -394,8 +395,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             else:
                 if kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item.upper():
                     val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                    val_tgt = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     k_item_upper = kode_item.upper()
+                    
+                    # LOGIKA PENJUMLAHAN AKUMULASI (TARGET & BB STANDAR)
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
+                    item_target_dalam_transaksi[k_item_upper] = round(item_target_dalam_transaksi.get(k_item_upper, 0.0) + val_tgt, 3)
 
         gudang_group_norm = normalisasi_gudang(gudang_group)
         is_to_group = is_to_reprocess(teks_gab_group)
@@ -528,12 +533,27 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_item_upper = kode_item.upper()
                 if k_item_upper not in obat_rendered_set:
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                    qty_tgt_baris = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
+                        qty_tgt_cek = qty_tgt_baris
                         df_mb.at[idx, 'Info Celup Gabung'] = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
+                        qty_tgt_cek = round(item_target_dalam_transaksi.get(k_item_upper, qty_tgt_baris), 3)
+
+                    # --- INJEKSI PERBAIKAN VISUAL AGREGAT (Ubah angka baris pertama jadi nilai TOTAL) ---
+                    if qty_bb_cek != qty_bb_baris or qty_tgt_cek != qty_tgt_baris:
+                        df_mb.at[idx, 'Qty BB Standar (GR)'] = qty_bb_cek
+                        df_mb.at[idx, 'Qty Target Standar (GR)'] = qty_tgt_cek
+                        
+                        info_existing = str(df_mb.at[idx, 'Info Celup Gabung']).strip()
+                        if not info_existing:
+                            df_mb.at[idx, 'Info Celup Gabung'] = "Akumulasi Multi-Baris"
+                        elif "Akumulasi" not in info_existing:
+                            df_mb.at[idx, 'Info Celup Gabung'] = info_existing + " | Akumulasi Multi-Baris"
+                    # ------------------------------------------------------------------------------------
 
                     if len(pibc_list_grup) > 0:
                         qty_pibc_total = 0.0
@@ -705,7 +725,6 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                         
                     cell.value = val_float
                     
-                    # PERBAIKAN FORMAT: Hanya 'selisih' yang 3 angka koma, sisanya kembali ke 2 angka koma
                     if 'selisih' in str(col_name).lower():
                         cell.number_format = '#,##0.000'
                     else:
