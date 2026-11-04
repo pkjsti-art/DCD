@@ -1,0 +1,10 @@
+[server]
+# Memperbesar batas ukuran maksimal unggahan (dalam MB)
+maxUploadSize = 1000
+
+# Mematikan proteksi keamanan XSRF & CORS yang sering memblokir unggahan banyak file sekaligus
+enableXsrfProtection = false
+enableCORS = false
+
+# Memperbesar batas ukuran pesan Websocket agar tidak timeout saat loading file
+maxMessageSize = 500
