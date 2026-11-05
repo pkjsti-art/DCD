@@ -237,14 +237,21 @@ def siapkan_kolom_standar(df_mb):
         is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not is_benang))
 
         if not is_diabaikan:
-            if col_target_qty and pd.notna(r[col_target_qty]) and str(r[col_target_qty]).strip().lower() != 'nan':
-                val = bersihkan_angka_indo(r[col_target_qty])
-                unit = str(r[col_target_unit]).strip().upper() if col_target_unit else 'GR'
-                seri_target_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
-            if col_qty and pd.notna(r[col_qty]) and str(r[col_qty]).strip().lower() != 'nan':
-                val = bersihkan_angka_indo(r[col_qty])
-                unit = str(r[col_unit]).strip().upper() if col_unit else 'GR'
-                seri_bb_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
+            # PENCEGAHAN BARIS KOSONG MENJADI ANGKA 0 DI TARGET QTY
+            if col_target_qty and pd.notna(r[col_target_qty]):
+                raw_tgt = str(r[col_target_qty]).strip().lower()
+                if raw_tgt not in ['', 'nan', 'none', 'nat']:
+                    val = bersihkan_angka_indo(r[col_target_qty])
+                    unit = str(r[col_target_unit]).strip().upper() if col_target_unit else 'GR'
+                    seri_target_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
+                    
+            # PENCEGAHAN BARIS KOSONG MENJADI ANGKA 0 DI QTY BB
+            if col_qty and pd.notna(r[col_qty]):
+                raw_qty = str(r[col_qty]).strip().lower()
+                if raw_qty not in ['', 'nan', 'none', 'nat']:
+                    val = bersihkan_angka_indo(r[col_qty])
+                    unit = str(r[col_unit]).strip().upper() if col_unit else 'GR'
+                    seri_bb_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
 
     idx_target = list(df_mb.columns).index(col_target_unit if col_target_unit else col_target_qty) + 1 if (col_target_unit or col_target_qty) else len(df_mb.columns)
     df_mb.insert(idx_target, 'Qty Target Standar (GR)', seri_target_gr)
@@ -362,7 +369,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         rincian_benang_list = []
         
         item_qty_dalam_transaksi = {} 
-        # (Catatan: item_target_dalam_transaksi DIHAPUS karena Target Qty tidak butuh akumulasi multi-baris)
         
         teks_gab_group = ""
         gudang_group = ""
@@ -394,8 +400,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item.upper():
                     val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     k_item_upper = kode_item.upper()
-                    
-                    # LOGIKA PENJUMLAHAN AKUMULASI (Hanya BB Standar, bukan Target)
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
 
         gudang_group_norm = normalisasi_gudang(gudang_group)
@@ -528,7 +532,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             else:
                 k_item_upper = kode_item.upper()
                 if k_item_upper not in obat_rendered_set:
-                    # INI ADALAH BARIS KEMUNCULAN PERTAMA
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     
                     if kp_grup_utama in pibc_celup_gabung:
@@ -536,15 +539,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
 
-                    # ------ INJEKSI PENIMPAAN MUTLAK KE DALAM DATAFRAME ------
-                    # Hanya menimpa Qty BB Standar. Target Qty dibiarkan sesuai aslinya (Blank tetap Blank).
                     df_mb.loc[idx, 'Qty BB Standar (GR)'] = float(qty_bb_cek)
 
                     if qty_bb_cek != qty_bb_baris:
                         info_ex = str(df_mb.loc[idx, 'Info Celup Gabung']).strip()
                         if "Akumulasi" not in info_ex:
                             df_mb.loc[idx, 'Info Celup Gabung'] = info_ex + " | Akumulasi Multi-Baris" if info_ex else "Akumulasi Multi-Baris"
-                    # ---------------------------------------------------------
 
                     if len(pibc_list_grup) > 0:
                         qty_pibc_total = 0.0
@@ -611,14 +611,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     
                     obat_rendered_set.add(k_item_upper)
                 else:
-                    # ------ INJEKSI BARIS KEDUA (DUPLIKAT) ------
-                    # Mengosongkan angka di baris duplikat agar tidak mengecoh pembaca
                     df_mb.loc[idx, 'Qty BB Standar (GR)'] = None
                     df_mb.loc[idx, 'Qty Target Standar (GR)'] = None
                     df_mb.loc[idx, 'Crosscheck Qty'] = 'DIABAIKAN (SUDAH DIGABUNG KE BARIS ATAS)'
                     df_mb.loc[idx, 'Selisih PIBC (GR)'] = None
                     df_mb.loc[idx, 'Selisih PG (GR)'] = None
-                    # --------------------------------------------
 
             is_first_row = False
 
@@ -716,21 +713,25 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                 cell.alignment = std_alignment
                 
             if is_numeric_col(col_name) and cell.value is not None and str(cell.value).strip() != '':
-                try:
-                    if isinstance(cell.value, str):
-                        val_str = str(cell.value).strip().replace('.', '').replace(',', '.')
-                        val_float = float(val_str)
-                    else:
-                        val_float = float(cell.value)
+                # PERBAIKAN: Tangkap nilai string kosong / 'nan' agar dibersihkan menjadi sel kosong (blank)
+                if str(cell.value).strip().lower() in ['nan', 'none', 'nat']:
+                    cell.value = None
+                else:
+                    try:
+                        if isinstance(cell.value, str):
+                            val_str = str(cell.value).strip().replace('.', '').replace(',', '.')
+                            val_float = float(val_str)
+                        else:
+                            val_float = float(cell.value)
+                            
+                        cell.value = val_float
                         
-                    cell.value = val_float
-                    
-                    if 'selisih' in str(col_name).lower():
-                        cell.number_format = '#,##0.000'
-                    else:
-                        cell.number_format = '#,##0.00'
-                except:
-                    pass
+                        if 'selisih' in str(col_name).lower():
+                            cell.number_format = '#,##0.000'
+                        else:
+                            cell.number_format = '#,##0.00'
+                    except:
+                        pass
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
