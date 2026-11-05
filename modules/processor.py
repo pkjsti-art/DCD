@@ -360,8 +360,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         target_gr_utama_grup = 0.0
         total_bb_benang_grup = 0.0
         rincian_benang_list = []
+        
         item_qty_dalam_transaksi = {} 
-        item_target_dalam_transaksi = {}
+        # (Catatan: item_target_dalam_transaksi DIHAPUS karena Target Qty tidak butuh akumulasi multi-baris)
         
         teks_gab_group = ""
         gudang_group = ""
@@ -392,11 +393,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             else:
                 if kode_item not in BARIS_DIABAIKAN and 'PEKERJAAN' not in kode_item.upper():
                     val_bb = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                    val_tgt = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     k_item_upper = kode_item.upper()
                     
+                    # LOGIKA PENJUMLAHAN AKUMULASI (Hanya BB Standar, bukan Target)
                     item_qty_dalam_transaksi[k_item_upper] = round(item_qty_dalam_transaksi.get(k_item_upper, 0.0) + val_bb, 3)
-                    item_target_dalam_transaksi[k_item_upper] = round(item_target_dalam_transaksi.get(k_item_upper, 0.0) + val_tgt, 3)
 
         gudang_group_norm = normalisasi_gudang(gudang_group)
         is_to_group = is_to_reprocess(teks_gab_group)
@@ -429,15 +429,15 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not benang_flag))
 
             if is_diabaikan:
-                df_mb.at[idx, 'Qty Target Standar (GR)'] = None
-                df_mb.at[idx, 'Qty BB Standar (GR)'] = None
-                df_mb.at[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
+                df_mb.loc[idx, 'Qty Target Standar (GR)'] = None
+                df_mb.loc[idx, 'Qty BB Standar (GR)'] = None
+                df_mb.loc[idx, 'Rincian Benang'] = '' if 'Dyeing STI' in g_norm else rincian_benang_str
                 continue
 
             if 'Dyeing STI' in g_norm:
                 if kode_item.upper().startswith('TBB'):
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = None
-                    df_mb.at[idx, 'Crosscheck Qty'] = ''
+                    df_mb.loc[idx, 'Selisih Benang (GR)'] = None
+                    df_mb.loc[idx, 'Crosscheck Qty'] = ''
                 else:
                     val_target_sti = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     val_bb_sti = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
@@ -450,23 +450,23 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     if abs(selisih_sti) <= 0.009:
                         selisih_sti = 0.0
                         
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = float(selisih_sti)
+                    df_mb.loc[idx, 'Selisih Benang (GR)'] = float(selisih_sti)
                     
                     if selisih_sti == 0.0:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                        df_mb.loc[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else:
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
+                        df_mb.loc[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
                 
-                df_mb.at[idx, 'Qty PIBC'] = None
-                df_mb.at[idx, 'Qty PG'] = None
-                df_mb.at[idx, 'Selisih PIBC (GR)'] = None
-                df_mb.at[idx, 'Selisih PG (GR)'] = None
-                df_mb.at[idx, 'Info Celup Gabung'] = ''
-                df_mb.at[idx, 'Status Cek'] = ''
-                df_mb.at[idx, 'Status PIBC'] = ''
-                df_mb.at[idx, 'Rincian Benang'] = ''
-                df_mb.at[idx, 'Cek Variant'] = ''
-                df_mb.at[idx, 'Ext_PIBC'] = ''
+                df_mb.loc[idx, 'Qty PIBC'] = None
+                df_mb.loc[idx, 'Qty PG'] = None
+                df_mb.loc[idx, 'Selisih PIBC (GR)'] = None
+                df_mb.loc[idx, 'Selisih PG (GR)'] = None
+                df_mb.loc[idx, 'Info Celup Gabung'] = ''
+                df_mb.loc[idx, 'Status Cek'] = ''
+                df_mb.loc[idx, 'Status PIBC'] = ''
+                df_mb.loc[idx, 'Rincian Benang'] = ''
+                df_mb.loc[idx, 'Cek Variant'] = ''
+                df_mb.loc[idx, 'Ext_PIBC'] = ''
                 
                 is_first_row = False
                 continue
@@ -480,31 +480,31 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
             if is_first_row:
                 if 'Softcone' not in g_norm:
                     if not grup_punya_pibc:
-                        df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
+                        df_mb.loc[idx, 'Status PIBC'] = 'Kode PIBC di MB Tidak Ada'
                     else:
                         miss_pibc = [p for p in pibc_list_grup if sanitize_key(p) not in pibc_available_keys]
                         miss_pg = [p for p in pibc_list_grup if sanitize_key(p) not in pg_available_keys]
                         
                         if not miss_pibc and not miss_pg:
-                            df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada'
+                            df_mb.loc[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada'
                         elif miss_pibc and miss_pg:
                             if set(miss_pibc) == set(pibc_list_grup) and set(miss_pg) == set(pibc_list_grup):
-                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC & PG Tidak Ada'
+                                df_mb.loc[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC & PG Tidak Ada'
                             else:
                                 gabung_miss = list(dict.fromkeys(miss_pibc + miss_pg))
-                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(gabung_miss)}] di Master PIBC & PG Tidak Ada)'
+                                df_mb.loc[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(gabung_miss)}] di Master PIBC & PG Tidak Ada)'
                         elif miss_pibc:
                             if set(miss_pibc) == set(pibc_list_grup):
-                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC Tidak Ada'
+                                df_mb.loc[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PIBC Tidak Ada'
                             else:
-                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pibc)}] di Master PIBC Tidak Ada)'
+                                df_mb.loc[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pibc)}] di Master PIBC Tidak Ada)'
                         elif miss_pg:
                             if set(miss_pg) == set(pibc_list_grup):
-                                df_mb.at[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PG Tidak Ada'
+                                df_mb.loc[idx, 'Status PIBC'] = 'Kode PIBC di MB Ada, di Master PG Tidak Ada'
                             else:
-                                df_mb.at[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
+                                df_mb.loc[idx, 'Status PIBC'] = f'Kode PIBC di MB Ada (Namun [{", ".join(miss_pg)}] di Master PG Tidak Ada)'
 
-            df_mb.at[idx, 'Rincian Benang'] = rincian_benang_str
+            df_mb.loc[idx, 'Rincian Benang'] = rincian_benang_str
 
             nama_brg_jdi = str(row.get('Nama Barang Jadi', '')).upper()
             tg = str(row.get('Keterangan', '')) + " " + str(row.get('Keterangan Lain', ''))
@@ -517,36 +517,33 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     if abs(selisih_total) <= 0.009:
                         selisih_total = 0.0
                         
-                    df_mb.at[idx, 'Selisih Benang (GR)'] = float(selisih_total)
+                    df_mb.loc[idx, 'Selisih Benang (GR)'] = float(selisih_total)
                     
                     if selisih_total == 0.0: 
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'CORRECT'
+                        df_mb.loc[idx, 'Crosscheck Qty'] = 'CORRECT'
                     else: 
-                        df_mb.at[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
+                        df_mb.loc[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     
                     benang_status_rendered = True
             else:
                 k_item_upper = kode_item.upper()
                 if k_item_upper not in obat_rendered_set:
-                    # INI ADALAH BARIS KEMUNCULAN PERTAMA: KITA TIMPA ANGKA MENTAH DENGAN TOTAL AGREGAT
+                    # INI ADALAH BARIS KEMUNCULAN PERTAMA
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
-                    qty_tgt_baris = bersihkan_angka_indo(row.get('Qty Target Standar (GR)'))
                     
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
-                        qty_tgt_cek = qty_tgt_baris
                     else:
                         qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
-                        qty_tgt_cek = round(item_target_dalam_transaksi.get(k_item_upper, qty_tgt_baris), 3)
 
                     # ------ INJEKSI PENIMPAAN MUTLAK KE DALAM DATAFRAME ------
-                    df_mb.at[idx, 'Qty BB Standar (GR)'] = float(qty_bb_cek)
-                    df_mb.at[idx, 'Qty Target Standar (GR)'] = float(qty_tgt_cek)
+                    # Hanya menimpa Qty BB Standar. Target Qty dibiarkan sesuai aslinya (Blank tetap Blank).
+                    df_mb.loc[idx, 'Qty BB Standar (GR)'] = float(qty_bb_cek)
 
-                    if qty_bb_cek != qty_bb_baris or qty_tgt_cek != qty_tgt_baris:
-                        info_ex = str(df_mb.at[idx, 'Info Celup Gabung']).strip()
+                    if qty_bb_cek != qty_bb_baris:
+                        info_ex = str(df_mb.loc[idx, 'Info Celup Gabung']).strip()
                         if "Akumulasi" not in info_ex:
-                            df_mb.at[idx, 'Info Celup Gabung'] = info_ex + " | Akumulasi Multi-Baris" if info_ex else "Akumulasi Multi-Baris"
+                            df_mb.loc[idx, 'Info Celup Gabung'] = info_ex + " | Akumulasi Multi-Baris" if info_ex else "Akumulasi Multi-Baris"
                     # ---------------------------------------------------------
 
                     if len(pibc_list_grup) > 0:
@@ -579,48 +576,48 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                         
                         if found_in_pibc:
                             qty_pibc_total = round(qty_pibc_total, 3)
-                            df_mb.at[idx, 'Qty PIBC'] = float(qty_pibc_total)
+                            df_mb.loc[idx, 'Qty PIBC'] = float(qty_pibc_total)
                             sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             
                             if abs(sel_pibc) <= 0.009:
                                 sel_pibc = 0.0
                                 
-                            df_mb.at[idx, 'Selisih PIBC (GR)'] = float(sel_pibc)
+                            df_mb.loc[idx, 'Selisih PIBC (GR)'] = float(sel_pibc)
                             
                         if found_in_pg:
                             qty_pg_total = round(qty_pg_total, 3)
-                            df_mb.at[idx, 'Qty PG'] = float(qty_pg_total)
+                            df_mb.loc[idx, 'Qty PG'] = float(qty_pg_total)
                             sel_pg = round(qty_bb_cek - qty_pg_total, 3)
                             
                             if abs(sel_pg) <= 0.009:
                                 sel_pg = 0.0
                                 
-                            df_mb.at[idx, 'Selisih PG (GR)'] = float(sel_pg)
+                            df_mb.loc[idx, 'Selisih PG (GR)'] = float(sel_pg)
 
                         status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if sel_pibc == 0.0 else "SELISIH")
                         status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if sel_pg == 0.0 else "SELISIH")
 
                         if status_pibc == "TIDAK ADA" and status_pg == "TIDAK ADA":
-                            df_mb.at[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
+                            df_mb.loc[idx, 'Crosscheck Qty'] = 'ITEM TIDAK DI TEMUKAN'
                             status_cek_list.append(f"Kelebihan [{kode_item}]")
-                        elif status_pibc == "MATCH" and status_pg == "MATCH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC & PG'
-                        elif status_pibc == "MATCH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG SELISIH)'
-                        elif status_pibc == "MATCH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PIBC (TIDAK ADA DI PG)'
-                        elif status_pg == "MATCH" and status_pibc == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC SELISIH)'
-                        elif status_pg == "MATCH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'MATCH PG (TIDAK ADA DI PIBC)'
-                        elif status_pibc == "SELISIH" and status_pg == "SELISIH": df_mb.at[idx, 'Crosscheck Qty'] = 'SELISIH KEDUANYA'
-                        elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
-                        elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.at[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
+                        elif status_pibc == "MATCH" and status_pg == "MATCH": df_mb.loc[idx, 'Crosscheck Qty'] = 'MATCH PIBC & PG'
+                        elif status_pibc == "MATCH" and status_pg == "SELISIH": df_mb.loc[idx, 'Crosscheck Qty'] = 'MATCH PIBC (PG SELISIH)'
+                        elif status_pibc == "MATCH" and status_pg == "TIDAK ADA": df_mb.loc[idx, 'Crosscheck Qty'] = 'MATCH PIBC (TIDAK ADA DI PG)'
+                        elif status_pg == "MATCH" and status_pibc == "SELISIH": df_mb.loc[idx, 'Crosscheck Qty'] = 'MATCH PG (PIBC SELISIH)'
+                        elif status_pg == "MATCH" and status_pibc == "TIDAK ADA": df_mb.loc[idx, 'Crosscheck Qty'] = 'MATCH PG (TIDAK ADA DI PIBC)'
+                        elif status_pibc == "SELISIH" and status_pg == "SELISIH": df_mb.loc[idx, 'Crosscheck Qty'] = 'SELISIH KEDUANYA'
+                        elif status_pibc == "SELISIH" and status_pg == "TIDAK ADA": df_mb.loc[idx, 'Crosscheck Qty'] = 'PIBC SELISIH (TIDAK ADA DI PG)'
+                        elif status_pg == "SELISIH" and status_pibc == "TIDAK ADA": df_mb.loc[idx, 'Crosscheck Qty'] = 'PG SELISIH (TIDAK ADA DI PIBC)'
                     
                     obat_rendered_set.add(k_item_upper)
                 else:
                     # ------ INJEKSI BARIS KEDUA (DUPLIKAT) ------
                     # Mengosongkan angka di baris duplikat agar tidak mengecoh pembaca
-                    df_mb.at[idx, 'Qty BB Standar (GR)'] = None
-                    df_mb.at[idx, 'Qty Target Standar (GR)'] = None
-                    df_mb.at[idx, 'Crosscheck Qty'] = 'DIABAIKAN (SUDAH DIGABUNG KE BARIS ATAS)'
-                    df_mb.at[idx, 'Selisih PIBC (GR)'] = None
-                    df_mb.at[idx, 'Selisih PG (GR)'] = None
+                    df_mb.loc[idx, 'Qty BB Standar (GR)'] = None
+                    df_mb.loc[idx, 'Qty Target Standar (GR)'] = None
+                    df_mb.loc[idx, 'Crosscheck Qty'] = 'DIABAIKAN (SUDAH DIGABUNG KE BARIS ATAS)'
+                    df_mb.loc[idx, 'Selisih PIBC (GR)'] = None
+                    df_mb.loc[idx, 'Selisih PG (GR)'] = None
                     # --------------------------------------------
 
             is_first_row = False
@@ -629,16 +626,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         is_softcone_group = 'Softcone' in gudang_group_norm or (gudang_group_norm == '' and str(df_mb.loc[idx_first].get('Kode Item', '')).strip().upper().startswith(('TWP', 'MWP', 'TBM', 'MBB')))
 
         if is_softcone_group:
-            df_mb.at[idx_first, 'Status Cek'] = ''
+            df_mb.loc[idx_first, 'Status Cek'] = ''
         else:
             is_dyeing_sti_tbb_only = ('Dyeing STI' in gudang_group_norm) and (len(rincian_benang_list) == 0)
             if is_dyeing_sti_tbb_only:
-                df_mb.at[idx_first, 'Status Cek'] = ''
+                df_mb.loc[idx_first, 'Status Cek'] = ''
             else:
-                df_mb.at[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLETE'
+                df_mb.loc[idx_first, 'Status Cek'] = ", ".join(list(set(status_cek_list))) if status_cek_list else 'COMPLETE'
             
             if 'Mesin Dyeing' in gudang_group_norm or 'Lab & RnD' in gudang_group_norm:
-                df_mb.at[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
+                df_mb.loc[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
             
     if 'Ext_PIBC_List' in df_mb.columns:
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
