@@ -72,7 +72,6 @@ def ekstrak_pibc_lab(teks_filtered):
         hasil = re.findall(POLA_PIBC, bagian_sebelum, re.IGNORECASE)
         if hasil: return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
     
-    # Fallback Lab: Ambil dari manapun jika kosong
     hasil = re.findall(POLA_PIBC, teks_str, re.IGNORECASE)
     return list(dict.fromkeys([x.strip().rstrip('.') for x in hasil]))
 
@@ -237,7 +236,6 @@ def siapkan_kolom_standar(df_mb):
         is_diabaikan = (kode_item in BARIS_DIABAIKAN or 'PEKERJAAN' in kode_item.upper() or ('Softcone' in g_norm and not is_benang))
 
         if not is_diabaikan:
-            # PENCEGAHAN BARIS KOSONG MENJADI ANGKA 0 DI TARGET QTY
             if col_target_qty and pd.notna(r[col_target_qty]):
                 raw_tgt = str(r[col_target_qty]).strip().lower()
                 if raw_tgt not in ['', 'nan', 'none', 'nat']:
@@ -245,7 +243,6 @@ def siapkan_kolom_standar(df_mb):
                     unit = str(r[col_target_unit]).strip().upper() if col_target_unit else 'GR'
                     seri_target_gr[idx] = round(val if unit == 'GR' else val * 1000.0, 3)
                     
-            # PENCEGAHAN BARIS KOSONG MENJADI ANGKA 0 DI QTY BB
             if col_qty and pd.notna(r[col_qty]):
                 raw_qty = str(r[col_qty]).strip().lower()
                 if raw_qty not in ['', 'nan', 'none', 'nat']:
@@ -259,11 +256,11 @@ def siapkan_kolom_standar(df_mb):
     idx_bb = list(df_mb.columns).index(col_qty) + 1 if col_qty else len(df_mb.columns)
     df_mb.insert(idx_bb, 'Qty BB Standar (GR)', seri_bb_gr)
 
-    for col_baru in ['Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']:
+    for col_baru in ['Qty Memphis', 'Qty PG', 'Selisih Benang (GR)', 'Selisih Memphis (GR)', 'Selisih PG (GR)']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = None
         df_mb[col_baru] = df_mb[col_baru].astype(object)
         
-    for col_baru in ['Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
+    for col_baru in ['Crosscheck Qty', 'Info Celup Gabung', 'Status Cek', 'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC']:
         if col_baru not in df_mb.columns: df_mb[col_baru] = ''
         df_mb[col_baru] = df_mb[col_baru].astype(object)
 
@@ -297,8 +294,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 if k_nama: pibc_lookup[(k_dyelot, k_nama)] = round(pibc_lookup.get((k_dyelot, k_nama), 0.0) + val_act, 3)
 
     pg_lookup = {}
+    pg_trans_lookup = {}
     if df_pg is not None and not df_pg.empty:
         if 'PIBC_PG' in df_pg.columns and 'Qty_PG' in df_pg.columns:
+            col_no_trans_pg = cari_kolom_akurat(df_pg, ['NOTRANSAKSI', 'KODETRANSAKSI'])
             for _, r in df_pg.iterrows():
                 val_msk = bersihkan_angka_indo(r['Qty_PG'])
                 if val_msk <= 0: continue 
@@ -314,9 +313,19 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_ket_utama = sanitize_key(pibc_ext_list[0])
                 k_kode = sanitize_key(r.get('Kode_Item_PG', ''))
                 k_nama = sanitize_key(r.get('Nama_Item_PG', ''))
+                no_trans = str(r[col_no_trans_pg]).strip() if col_no_trans_pg and pd.notna(r[col_no_trans_pg]) else ""
+                if no_trans.lower() in ['nan', 'none', 'nat']: no_trans = ""
                 
-                if k_kode: pg_lookup[(k_ket_utama, k_kode)] = round(pg_lookup.get((k_ket_utama, k_kode), 0.0) + val_msk, 3)
-                if k_nama: pg_lookup[(k_ket_utama, k_nama)] = round(pg_lookup.get((k_ket_utama, k_nama), 0.0) + val_msk, 3)
+                if k_kode:
+                    pg_lookup[(k_ket_utama, k_kode)] = round(pg_lookup.get((k_ket_utama, k_kode), 0.0) + val_msk, 3)
+                    if no_trans:
+                        if (k_ket_utama, k_kode) not in pg_trans_lookup: pg_trans_lookup[(k_ket_utama, k_kode)] = {}
+                        pg_trans_lookup[(k_ket_utama, k_kode)][no_trans] = round(pg_trans_lookup[(k_ket_utama, k_kode)].get(no_trans, 0.0) + val_msk, 3)
+                if k_nama:
+                    pg_lookup[(k_ket_utama, k_nama)] = round(pg_lookup.get((k_ket_utama, k_nama), 0.0) + val_msk, 3)
+                    if no_trans:
+                        if (k_ket_utama, k_nama) not in pg_trans_lookup: pg_trans_lookup[(k_ket_utama, k_nama)] = {}
+                        pg_trans_lookup[(k_ket_utama, k_nama)][no_trans] = round(pg_trans_lookup[(k_ket_utama, k_nama)].get(no_trans, 0.0) + val_msk, 3)
 
     for idx, row in df_mb.iterrows():
         gudang = str(row.get('Gudang', ''))
@@ -461,13 +470,14 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     else:
                         df_mb.loc[idx, 'Crosscheck Qty'] = 'MEMANG SELISIH' if ada_keyword_selisih_sti else 'INCORRECT'
                 
-                df_mb.loc[idx, 'Qty PIBC'] = None
+                df_mb.loc[idx, 'Qty Memphis'] = None
                 df_mb.loc[idx, 'Qty PG'] = None
-                df_mb.loc[idx, 'Selisih PIBC (GR)'] = None
+                df_mb.loc[idx, 'Selisih Memphis (GR)'] = None
                 df_mb.loc[idx, 'Selisih PG (GR)'] = None
                 df_mb.loc[idx, 'Info Celup Gabung'] = ''
                 df_mb.loc[idx, 'Status Cek'] = ''
                 df_mb.loc[idx, 'Status PIBC'] = ''
+                df_mb.loc[idx, 'Kode Transaksi PG'] = ''
                 df_mb.loc[idx, 'Rincian Benang'] = ''
                 df_mb.loc[idx, 'Cek Variant'] = ''
                 df_mb.loc[idx, 'Ext_PIBC'] = ''
@@ -533,24 +543,27 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                 k_item_upper = kode_item.upper()
                 if k_item_upper not in obat_rendered_set:
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
+                    qty_bb_mb_sendiri = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
                     
                     if kp_grup_utama in pibc_celup_gabung:
-                        qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_baris), 3)
+                        qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_mb_sendiri), 3)
+                        info_cg = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                        if qty_bb_mb_sendiri != qty_bb_baris:
+                            info_cg += " | Akumulasi Multi-Baris"
+                        df_mb.loc[idx, 'Info Celup Gabung'] = info_cg
                     else:
-                        qty_bb_cek = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
+                        qty_bb_cek = qty_bb_mb_sendiri
+                        if qty_bb_mb_sendiri != qty_bb_baris:
+                            df_mb.loc[idx, 'Info Celup Gabung'] = "Akumulasi Multi-Baris"
 
-                    df_mb.loc[idx, 'Qty BB Standar (GR)'] = float(qty_bb_cek)
-
-                    if qty_bb_cek != qty_bb_baris:
-                        info_ex = str(df_mb.loc[idx, 'Info Celup Gabung']).strip()
-                        if "Akumulasi" not in info_ex:
-                            df_mb.loc[idx, 'Info Celup Gabung'] = info_ex + " | Akumulasi Multi-Baris" if info_ex else "Akumulasi Multi-Baris"
+                    df_mb.loc[idx, 'Qty BB Standar (GR)'] = float(qty_bb_mb_sendiri)
 
                     if len(pibc_list_grup) > 0:
                         qty_pibc_total = 0.0
                         qty_pg_total = 0.0
                         found_in_pibc = False
                         found_in_pg = False
+                        pg_trans_gabung = {}
                         
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
@@ -567,22 +580,26 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                             if (kp_san, k_kode) in pg_lookup:
                                 qty_pg_total += pg_lookup[(kp_san, k_kode)]
                                 found_in_pg = True
+                                for nt, q_nt in pg_trans_lookup.get((kp_san, k_kode), {}).items():
+                                    pg_trans_gabung[nt] = round(pg_trans_gabung.get(nt, 0.0) + q_nt, 3)
                             elif (kp_san, k_nama) in pg_lookup:
                                 qty_pg_total += pg_lookup[(kp_san, k_nama)]
                                 found_in_pg = True
+                                for nt, q_nt in pg_trans_lookup.get((kp_san, k_nama), {}).items():
+                                    pg_trans_gabung[nt] = round(pg_trans_gabung.get(nt, 0.0) + q_nt, 3)
 
                         sel_pibc = None
                         sel_pg = None
                         
                         if found_in_pibc:
                             qty_pibc_total = round(qty_pibc_total, 3)
-                            df_mb.loc[idx, 'Qty PIBC'] = float(qty_pibc_total)
+                            df_mb.loc[idx, 'Qty Memphis'] = float(qty_pibc_total)
                             sel_pibc = round(qty_bb_cek - qty_pibc_total, 3)
                             
                             if abs(sel_pibc) <= 0.009:
                                 sel_pibc = 0.0
                                 
-                            df_mb.loc[idx, 'Selisih PIBC (GR)'] = float(sel_pibc)
+                            df_mb.loc[idx, 'Selisih Memphis (GR)'] = float(sel_pibc)
                             
                         if found_in_pg:
                             qty_pg_total = round(qty_pg_total, 3)
@@ -593,6 +610,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                                 sel_pg = 0.0
                                 
                             df_mb.loc[idx, 'Selisih PG (GR)'] = float(sel_pg)
+                            
+                            if pg_trans_gabung:
+                                trans_str_list = [f"{nt} ({q_nt:,.2f} GR)" for nt, q_nt in pg_trans_gabung.items()]
+                                df_mb.loc[idx, 'Kode Transaksi PG'] = ", ".join(trans_str_list)
 
                         status_pibc = "TIDAK ADA" if not found_in_pibc else ("MATCH" if sel_pibc == 0.0 else "SELISIH")
                         status_pg = "TIDAK ADA" if not found_in_pg else ("MATCH" if sel_pg == 0.0 else "SELISIH")
@@ -614,8 +635,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
                     df_mb.loc[idx, 'Qty BB Standar (GR)'] = None
                     df_mb.loc[idx, 'Qty Target Standar (GR)'] = None
                     df_mb.loc[idx, 'Crosscheck Qty'] = 'DIABAIKAN (SUDAH DIGABUNG KE BARIS ATAS)'
-                    df_mb.loc[idx, 'Selisih PIBC (GR)'] = None
+                    df_mb.loc[idx, 'Selisih Memphis (GR)'] = None
                     df_mb.loc[idx, 'Selisih PG (GR)'] = None
+                    df_mb.loc[idx, 'Kode Transaksi PG'] = ''
 
             is_first_row = False
 
@@ -638,7 +660,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
 
     cols = list(df_mb.columns)
-    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 'Selisih PG (GR)']
+    group_cols = ['Qty Target Standar (GR)', 'Qty BB Standar (GR)', 'Qty Memphis', 'Qty PG', 'Selisih Benang (GR)', 'Selisih Memphis (GR)', 'Selisih PG (GR)']
     
     for c in group_cols:
         if c in cols: cols.remove(c)
@@ -650,6 +672,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg):
         
     for c in reversed(group_cols):
         cols.insert(idx_insert, c)
+
+    if 'Kode Transaksi PG' in cols and 'Rincian Benang' in cols:
+        cols.remove('Kode Transaksi PG')
+        cols.insert(cols.index('Rincian Benang'), 'Kode Transaksi PG')
         
     df_mb = df_mb[cols]
 
@@ -663,12 +689,12 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
     
-    wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
+    wrap_cols = ['Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Status Cek', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC', 'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya', 'Item Bermasalah', 'Keterangan Asli']
     
     def is_numeric_col(c_name):
         c = str(c_name).lower()
         kw = ['qty', 'harga', 'total', 'target', 'selisih', 'actual', 'jumlah', 'amount']
-        if 'unit' in c or 'satuan' in c or 'crosscheck' in c or 'status' in c or 'keterangan' in c or 'info' in c:
+        if 'unit' in c or 'satuan' in c or 'crosscheck' in c or 'status' in c or 'keterangan' in c or 'info' in c or 'transaksi' in c:
             return False
         return any(k in c for k in kw)
 
@@ -713,7 +739,6 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                 cell.alignment = std_alignment
                 
             if is_numeric_col(col_name) and cell.value is not None and str(cell.value).strip() != '':
-                # PERBAIKAN: Tangkap nilai string kosong / 'nan' agar dibersihkan menjadi sel kosong (blank)
                 if str(cell.value).strip().lower() in ['nan', 'none', 'nat']:
                     cell.value = None
                 else:
@@ -725,11 +750,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                             val_float = float(cell.value)
                             
                         cell.value = val_float
-                        
-                        if 'selisih' in str(col_name).lower():
-                            cell.number_format = '#,##0.000'
-                        else:
-                            cell.number_format = '#,##0.00'
+                        cell.number_format = '#,##0.00'
                     except:
                         pass
 
@@ -777,21 +798,23 @@ def buat_excel_rekap_audit(df_hasil):
                     'Item Bermasalah': item_bermasalah,
                     'Qty Target Standar (GR)': row.get('Qty Target Standar (GR)') if pd.notna(row.get('Qty Target Standar (GR)')) else None,
                     'Qty BB Standar (GR)': row.get('Qty BB Standar (GR)') if pd.notna(row.get('Qty BB Standar (GR)')) else None,
-                    'Qty PIBC': row.get('Qty PIBC') if pd.notna(row.get('Qty PIBC')) else None,
+                    'Qty Memphis': row.get('Qty Memphis') if pd.notna(row.get('Qty Memphis')) else None,
                     'Qty PG': row.get('Qty PG') if pd.notna(row.get('Qty PG')) else None,
                     'Selisih Benang (GR)': row.get('Selisih Benang (GR)') if pd.notna(row.get('Selisih Benang (GR)')) else None,
-                    'Selisih PIBC (GR)': row.get('Selisih PIBC (GR)') if pd.notna(row.get('Selisih PIBC (GR)')) else None,
+                    'Selisih Memphis (GR)': row.get('Selisih Memphis (GR)') if pd.notna(row.get('Selisih Memphis (GR)')) else None,
                     'Selisih PG (GR)': row.get('Selisih PG (GR)') if pd.notna(row.get('Selisih PG (GR)')) else None,
                     'Jenis Temuan': jenis,
                     'Detail Kesalahan & Seharusnya': detail,
+                    'Kode Transaksi PG': row.get('Kode Transaksi PG', ''),
                     'Catatan Auditor': ''
                 })
         
         kolom_fix = [
             'Gudang', 'Kode', 'Keterangan', 'Keterangan Lain', 'Kode PIBC Terdeteksi', 
             'Item Bermasalah', 'Qty Target Standar (GR)', 'Qty BB Standar (GR)', 
-            'Qty PIBC', 'Qty PG', 'Selisih Benang (GR)', 'Selisih PIBC (GR)', 
-            'Selisih PG (GR)', 'Jenis Temuan', 'Detail Kesalahan & Seharusnya', 'Catatan Auditor'
+            'Qty Memphis', 'Qty PG', 'Selisih Benang (GR)', 'Selisih Memphis (GR)', 
+            'Selisih PG (GR)', 'Jenis Temuan', 'Detail Kesalahan & Seharusnya', 
+            'Kode Transaksi PG', 'Catatan Auditor'
         ]
         
         df_ringkas = pd.DataFrame(data_ringkas)
