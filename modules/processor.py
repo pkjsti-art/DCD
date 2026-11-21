@@ -87,6 +87,11 @@ def ekstrak_pibc_to(teks_filtered):
         parts = re.split(r'\bTO\b', teks_str, flags=re.IGNORECASE)
         if len(parts) > 1:
             hasil.extend(re.findall(POLA_PIBC, parts[-1], re.IGNORECASE))
+
+    if not hasil and re.search(r'\bREPROCESS', teks_str, re.IGNORECASE):
+        parts = re.split(r'\bREPROCESS', teks_str, flags=re.IGNORECASE)
+        if len(parts) > 1:
+            hasil.extend(re.findall(POLA_PIBC, parts[-1], re.IGNORECASE))
             
     if not hasil:
         hasil.extend(re.findall(POLA_PIBC, teks_str, re.IGNORECASE))
