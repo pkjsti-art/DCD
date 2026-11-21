@@ -707,11 +707,6 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
-        
-        if col_name in wrap_cols:
-            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 35
-        else:
-            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
 
     warna_hex = ['FFBDB2FF', 'FFFFCEE3', 'FFFDFFD2', 'FFCAEDFF']
     color_fills = [PatternFill(start_color=c, end_color=c, fill_type='solid') for c in warna_hex]
@@ -719,23 +714,26 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
     wrap_alignment = Alignment(wrap_text=True, vertical='top')
     std_alignment = Alignment(vertical='top')
     
-    try:
+    idx_kode = None
+    if nama_kolom_kode and nama_kolom_kode in df.columns:
         idx_kode = list(df.columns).index(nama_kolom_kode) + 1
-    except ValueError:
-        return 
         
     current_kode = None
     color_index = -1
     
     for r_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column), start=2):
-        cell_kode_val = ws.cell(row=r_idx, column=idx_kode).value
-        if cell_kode_val != current_kode:
-            current_kode = cell_kode_val
-            color_index = (color_index + 1) % len(color_fills)
-        
-        fill_to_apply = color_fills[color_index]
+        if idx_kode is not None:
+            cell_kode_val = ws.cell(row=r_idx, column=idx_kode).value
+            if cell_kode_val != current_kode:
+                current_kode = cell_kode_val
+                color_index = (color_index + 1) % len(color_fills)
+            fill_to_apply = color_fills[color_index]
+        else:
+            fill_to_apply = None
+
         for c_idx, cell in enumerate(row, start=1):
-            cell.fill = fill_to_apply
+            if fill_to_apply is not None:
+                cell.fill = fill_to_apply
             col_name = df.columns[c_idx - 1]
             
             if col_name in wrap_cols:
@@ -758,6 +756,29 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode'):
                         cell.number_format = '#,##0.00'
                     except:
                         pass
+
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        col_letter = ws.cell(row=1, column=col_idx).column_letter
+        max_len = len(str(col_name)) + 4
+        for r_idx in range(2, ws.max_row + 1):
+            val = ws.cell(row=r_idx, column=col_idx).value
+            if val is None:
+                continue
+            if isinstance(val, (int, float)):
+                val_str = f"{val:,.2f}"
+            else:
+                val_str = str(val)
+            line_max = max((len(line) for line in val_str.split('\n')), default=0)
+            if line_max > max_len:
+                max_len = line_max
+        if col_name in wrap_cols:
+            final_width = min(max(max_len + 3, 14), 55)
+        else:
+            final_width = min(max(max_len + 4, 12), 45)
+        ws.column_dimensions[col_letter].width = final_width
+
+    if ws.max_row >= 1 and ws.max_column >= 1:
+        ws.auto_filter.ref = ws.dimensions
 
 def buat_excel_hasil_keseluruhan(df_hasil):
     output = io.BytesIO()
@@ -828,7 +849,9 @@ def buat_excel_rekap_audit(df_hasil):
             df_ringkas.to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
             format_excel_sheet(writer.sheets['Laporan Ringkas Admin'], df_ringkas, 'Kode')
         else:
-            pd.DataFrame(columns=kolom_fix).to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
+            df_empty_ringkas = pd.DataFrame(columns=kolom_fix)
+            df_empty_ringkas.to_excel(writer, index=False, sheet_name='Laporan Ringkas Admin')
+            format_excel_sheet(writer.sheets['Laporan Ringkas Admin'], df_empty_ringkas, None)
             
         mask_qty = df_hasil['Crosscheck Qty'].astype(str).str.upper().apply(lambda x: ('INCORRECT' in x or 'SELISIH' in x) and x != 'MEMANG SELISIH')
         kode_qty = df_hasil[mask_qty]['Kode'].unique() if 'Kode' in df_hasil.columns else []
@@ -837,7 +860,9 @@ def buat_excel_rekap_audit(df_hasil):
             df_qty_full.to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
             format_excel_sheet(writer.sheets['Error Qty (Full Grup)'], df_qty_full, 'Kode')
         else:
-            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
+            df_info = pd.DataFrame({'Info': ['Tidak ada temuan']})
+            df_info.to_excel(writer, index=False, sheet_name='Error Qty (Full Grup)')
+            format_excel_sheet(writer.sheets['Error Qty (Full Grup)'], df_info, None)
             
         mask_var = df_hasil['Cek Variant'].astype(str).str.upper().apply(lambda x: x != '' and x != 'CLEAN')
         kode_var = df_hasil[mask_var]['Kode'].unique() if 'Kode' in df_hasil.columns else []
@@ -846,7 +871,9 @@ def buat_excel_rekap_audit(df_hasil):
             df_var_full.to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
             format_excel_sheet(writer.sheets['Error Varian (Full Grup)'], df_var_full, 'Kode')
         else:
-            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
+            df_info = pd.DataFrame({'Info': ['Tidak ada temuan']})
+            df_info.to_excel(writer, index=False, sheet_name='Error Varian (Full Grup)')
+            format_excel_sheet(writer.sheets['Error Varian (Full Grup)'], df_info, None)
             
         mask_ms = df_hasil['Crosscheck Qty'].astype(str).str.upper() == 'MEMANG SELISIH'
         kode_ms = df_hasil[mask_ms]['Kode'].unique() if 'Kode' in df_hasil.columns else []
@@ -855,7 +882,9 @@ def buat_excel_rekap_audit(df_hasil):
             df_ms_full.to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
             format_excel_sheet(writer.sheets['Memang Selisih (Full Grup)'], df_ms_full, 'Kode')
         else:
-            pd.DataFrame({'Info': ['Tidak ada temuan']}).to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
+            df_info = pd.DataFrame({'Info': ['Tidak ada temuan']})
+            df_info.to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
+            format_excel_sheet(writer.sheets['Memang Selisih (Full Grup)'], df_info, None)
             
     return output.getvalue()
 
@@ -864,6 +893,7 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         data_bodong = []
         pibc_di_master = set()
+        col_dyelot = None
         
         if df_pibc is not None and not df_pibc.empty:
             col_dyelot = cari_kolom_akurat(df_pibc, ['DYELOT', 'PIBC'])
@@ -887,7 +917,9 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
             df_bodong.to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
             format_excel_sheet(writer.sheets['PIBC MB Tidak Ditemukan'], df_bodong, 'Kode MB')
         else:
-            pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master']}).to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
+            df_info = pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master']})
+            df_info.to_excel(writer, index=False, sheet_name='PIBC MB Tidak Ditemukan')
+            format_excel_sheet(writer.sheets['PIBC MB Tidak Ditemukan'], df_info, None)
         
         if df_pibc is not None and not df_pibc.empty and col_dyelot:
             pibc_di_mb_expanded = set()
@@ -897,8 +929,11 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc):
             
             df_belum = df_pibc[~df_pibc[col_dyelot].astype(str).apply(sanitize_key).isin(pibc_di_mb_expanded)]
             df_belum.to_excel(writer, index=False, sheet_name='Master PIBC Belum Diproses')
+            format_excel_sheet(writer.sheets['Master PIBC Belum Diproses'], df_belum, None)
         else:
-            pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Master PIBC Belum Diproses')
+            df_info = pd.DataFrame({'Info': ['Master PIBC kosong/belum diupload']})
+            df_info.to_excel(writer, index=False, sheet_name='Master PIBC Belum Diproses')
+            format_excel_sheet(writer.sheets['Master PIBC Belum Diproses'], df_info, None)
             
     return output.getvalue()
 
@@ -931,7 +966,9 @@ def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
             df_bodong.to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
             format_excel_sheet(writer.sheets['PG MB Tidak Ditemukan'], df_bodong, 'Kode MB')
         else:
-            pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master PG']}).to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
+            df_info = pd.DataFrame({'Info': ['Semua PIBC di MB terdaftar valid di Master PG']})
+            df_info.to_excel(writer, index=False, sheet_name='PG MB Tidak Ditemukan')
+            format_excel_sheet(writer.sheets['PG MB Tidak Ditemukan'], df_info, None)
         
         if df_pg is not None and not df_pg.empty and 'PIBC_PG' in df_pg.columns:
             pibc_di_mb_expanded = set()
@@ -942,7 +979,10 @@ def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
             mask = df_pg['PIBC_PG'].astype(str).apply(lambda x: not any(sanitize_key(p) in pibc_di_mb_expanded for p in ekstrak_semua_pibc(x)))
             df_belum = df_pg[mask]
             df_belum.to_excel(writer, index=False, sheet_name='Master PG Belum Diproses')
+            format_excel_sheet(writer.sheets['Master PG Belum Diproses'], df_belum, None)
         else:
-            pd.DataFrame({'Info': ['Master PG kosong/belum diupload']}).to_excel(writer, index=False, sheet_name='Master PG Belum Diproses')
+            df_info = pd.DataFrame({'Info': ['Master PG kosong/belum diupload']})
+            df_info.to_excel(writer, index=False, sheet_name='Master PG Belum Diproses')
+            format_excel_sheet(writer.sheets['Master PG Belum Diproses'], df_info, None)
             
     return output.getvalue()
