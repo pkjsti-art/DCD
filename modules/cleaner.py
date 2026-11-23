@@ -31,6 +31,7 @@ def bersihkan_master_mb(file_excel):
     file_excel.seek(0)
     df_mb = pd.read_excel(file_excel, header=header_row_index)
     df_mb.columns = [str(col).strip() for col in df_mb.columns]
+    df_mb = df_mb.replace(r'^\s*$', pd.NA, regex=True)
     df_mb = df_mb.dropna(how='all').reset_index(drop=True)
     
     if len(df_mb) > 4:
