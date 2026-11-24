@@ -424,7 +424,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
 
     # 2. Indexing Master Memphis (Kunci Utama: No. Ticket)
     pibc_available_keys = set()
-    pibc_lookup_eff = {}
+    pibc_lookup_act = {}
     pibc_lookup_tgt = {}
     pibc_items_by_key = {}
     pibc_mesin_map = {}
@@ -459,14 +459,18 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                 
                 k_kode = sanitize_key(kode_raw)
                 k_nama = sanitize_key(nama_raw)
-                
                 is_bw_sw = is_target_keyword(nama_raw)
-                val_eff = val_tgt if is_bw_sw else val_act
                 
-                if val_eff > 0:
-                    if k_kode: pibc_lookup_eff[(k_ticket, k_kode)] = round(pibc_lookup_eff.get((k_ticket, k_kode), 0.0) + val_eff, 3)
-                    if k_nama: pibc_lookup_eff[(k_ticket, k_nama)] = round(pibc_lookup_eff.get((k_ticket, k_nama), 0.0) + val_eff, 3)
+                if val_act > 0:
+                    if k_kode: pibc_lookup_act[(k_ticket, k_kode)] = round(pibc_lookup_act.get((k_ticket, k_kode), 0.0) + val_act, 3)
+                    if k_nama: pibc_lookup_act[(k_ticket, k_nama)] = round(pibc_lookup_act.get((k_ticket, k_nama), 0.0) + val_act, 3)
                     
+                if val_tgt > 0:
+                    if k_kode: pibc_lookup_tgt[(k_ticket, k_kode)] = round(pibc_lookup_tgt.get((k_ticket, k_kode), 0.0) + val_tgt, 3)
+                    if k_nama: pibc_lookup_tgt[(k_ticket, k_nama)] = round(pibc_lookup_tgt.get((k_ticket, k_nama), 0.0) + val_tgt, 3)
+
+                # Item aktif di Memphis: Actual > 0, atau khusus BIOWHITE/SYNERWHITE dengan 0 < Target < 100
+                if (val_act > 0) or (is_bw_sw and 0 < val_tgt < 100.0):
                     canon_k = k_kode or k_nama
                     if canon_k:
                         if k_ticket not in pibc_items_by_key: pibc_items_by_key[k_ticket] = {}
@@ -475,10 +479,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                                 'kode': kode_raw, 'nama': nama_raw, 'k_kode': k_kode, 'k_nama': k_nama,
                                 'label': _buat_label_item(kode_raw, nama_raw)
                             }
-                            
-                if val_tgt > 0:
-                    if k_kode: pibc_lookup_tgt[(k_ticket, k_kode)] = round(pibc_lookup_tgt.get((k_ticket, k_kode), 0.0) + val_tgt, 3)
-                    if k_nama: pibc_lookup_tgt[(k_ticket, k_nama)] = round(pibc_lookup_tgt.get((k_ticket, k_nama), 0.0) + val_tgt, 3)
 
     # 3. Indexing Master PG (Terkunci per Gudang)
     pg_available_keys_by_gudang = set()
@@ -859,8 +859,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
                         
-                        use_target_memphis = is_target_keyword(nama_item)
-                        lookup_memphis = pibc_lookup_tgt if use_target_memphis else pibc_lookup_eff
+                        # Aturan BIOWHITE / SYNERWHITE: pakai Target jika Qty BB Standar < 100 GR, selain itu tetap Actual
+                        use_target_memphis = is_target_keyword(nama_item) and (qty_bb_cek < 100.0)
+                        lookup_memphis = pibc_lookup_tgt if use_target_memphis else pibc_lookup_act
                         
                         for pibc_raw in pibc_list_grup:
                             kp_san = sanitize_key(pibc_raw)
