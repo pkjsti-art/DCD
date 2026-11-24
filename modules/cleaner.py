@@ -94,6 +94,23 @@ def bersihkan_master_pg(daftar_file_pg):
         col_nama_var = cari_kolom_akurat(df, ['NAMAVARIANT', 'NAMAITEM'])
         col_gudang = cari_kolom_akurat(df, ['GUDANG'])
         col_status = cari_kolom_akurat(df, ['STATUS'])
+
+        col_ket_utama = None
+        for col in df.columns:
+            if col == col_ket_det:
+                continue
+            col_clean = re.sub(r'[^A-Z0-9]', '', str(col).upper())
+            if col_clean == 'KETERANGAN':
+                col_ket_utama = col
+                break
+        if not col_ket_utama:
+            for col in df.columns:
+                if col == col_ket_det:
+                    continue
+                col_clean = re.sub(r'[^A-Z0-9]', '', str(col).upper())
+                if 'KETERANGAN' in col_clean and 'DET' not in col_clean:
+                    col_ket_utama = col
+                    break
         
         if not col_masuk: 
             continue
@@ -108,6 +125,7 @@ def bersihkan_master_pg(daftar_file_pg):
         if col_no_trans: rename_dict[col_no_trans] = 'No_Transaksi_PG'
         if col_tanggal: rename_dict[col_tanggal] = 'Tanggal_PG'
         if col_gudang: rename_dict[col_gudang] = 'Gudang_PG'
+        if col_ket_utama: rename_dict[col_ket_utama] = 'Keterangan_PG'
         if col_ket_det: rename_dict[col_ket_det] = 'PIBC_PG'
         if col_kode_var: rename_dict[col_kode_var] = 'Kode_Item_PG'
         if col_nama_var: rename_dict[col_nama_var] = 'Nama_Item_PG'
@@ -116,18 +134,25 @@ def bersihkan_master_pg(daftar_file_pg):
         df_bersih.rename(columns=rename_dict, inplace=True)
         df_bersih['Qty_PG'] = df_bersih['TEMP_MASUK']
         
-        if 'No_Transaksi_PG' in df_bersih.columns:
-            df_bersih['No_Transaksi_PG'] = df_bersih['No_Transaksi_PG'].fillna('').astype(str).str.strip()
-            df_bersih.loc[df_bersih['No_Transaksi_PG'].str.lower().isin(['nan', 'none', 'nat']), 'No_Transaksi_PG'] = ''
+        for col_str in ['No_Transaksi_PG', 'Keterangan_PG', 'PIBC_PG']:
+            if col_str in df_bersih.columns:
+                df_bersih[col_str] = df_bersih[col_str].fillna('').astype(str).str.strip()
+                df_bersih.loc[df_bersih[col_str].str.lower().isin(['nan', 'none', 'nat']), col_str] = ''
 
-        kolom_inti = ['No_Transaksi_PG', 'Tanggal_PG', 'Gudang_PG', 'PIBC_PG', 'Kode_Item_PG', 'Nama_Item_PG', 'Qty_PG', 'Status_PG']
+        kolom_inti = [
+            'No_Transaksi_PG', 'Tanggal_PG', 'Gudang_PG', 'Keterangan_PG',
+            'PIBC_PG', 'Kode_Item_PG', 'Nama_Item_PG', 'Qty_PG', 'Status_PG'
+        ]
         for kf in kolom_inti:
             if kf not in df_bersih.columns:
                 df_bersih[kf] = ""
                 
         all_df_bersih.append(df_bersih[kolom_inti])
         
-    kolom_output = ['No_Transaksi_PG', 'Tanggal_PG', 'Gudang_PG', 'PIBC_PG', 'Kode_Item_PG', 'Nama_Item_PG', 'Qty_PG', 'Status_PG']
+    kolom_output = [
+        'No_Transaksi_PG', 'Tanggal_PG', 'Gudang_PG', 'Keterangan_PG',
+        'PIBC_PG', 'Kode_Item_PG', 'Nama_Item_PG', 'Qty_PG', 'Status_PG'
+    ]
     if all_df_bersih:
         df_gabungan = pd.concat(all_df_bersih, ignore_index=True)
         if ada_kolom_status and 'Status_PG' in df_gabungan.columns:
