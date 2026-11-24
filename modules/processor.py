@@ -3,13 +3,18 @@ import re
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
-from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 BARIS_DIABAIKAN = [
     "Total Material (Details)", "Total Pekerjaan (Works)", 
     "Total (Details + Works)", "Overhead Cost", "TOTAL HARGA", "Labor",
     "Kode Pekerjaan", "Nama Pekerjaan"
 ]
+
+THIN_BLACK = Side(border_style='thin', color='FF000000')
+MED_BLACK = Side(border_style='medium', color='FF000000')
+CELL_BORDER = Border(left=THIN_BLACK, right=THIN_BLACK, top=THIN_BLACK, bottom=THIN_BLACK)
+HEADER_BORDER = Border(left=THIN_BLACK, right=THIN_BLACK, top=MED_BLACK, bottom=MED_BLACK)
 
 def get_hari_ini_wib():
     wib = timezone(timedelta(hours=7))
@@ -1045,7 +1050,8 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
     header_font = Font(color='FFFFFFFF', bold=True)
     
     wrap_cols = [
-        'Keterangan', 'Keterangan Lain', 'Info Celup Gabung', 'Info Mesin',
+        'Keterangan', 'Keterangan Lain', 'Keterangan_PG', 'PIBC_PG',
+        'Info Celup Gabung', 'Info Mesin',
         'Cek Item (MB vs Memphis)', 'Cek Item (MB vs PG)', 'Cek Item (PG vs Memphis)',
         'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC',
         'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya',
@@ -1075,6 +1081,8 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
+        cell.border = HEADER_BORDER
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     warna_hex = ['FFBDB2FF', 'FFFFCEE3', 'FFFDFFD2', 'FFCAEDFF']
     color_fills = [PatternFill(start_color=c, end_color=c, fill_type='solid') for c in warna_hex]
@@ -1102,6 +1110,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
         for c_idx, cell in enumerate(row, start=1):
             if fill_to_apply is not None:
                 cell.fill = fill_to_apply
+            cell.border = CELL_BORDER
             col_name = df.columns[c_idx - 1]
             
             if col_name in wrap_cols:
@@ -1167,7 +1176,7 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
             ws.auto_filter.ref = ws.dimensions
 
 def format_excel_sheet_cepat(ws, df):
-    """Formatting super cepat berbasis Pandas untuk sheet Master berukuran besar."""
+    """Formatting cepat berbasis Pandas dengan garis border tabel tegas untuk sheet Master."""
     header_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
     header_font = Font(color='FFFFFFFF', bold=True)
     
@@ -1175,6 +1184,8 @@ def format_excel_sheet_cepat(ws, df):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
+        cell.border = HEADER_BORDER
+        cell.alignment = Alignment(horizontal='center', vertical='center')
         
         col_letter = cell.column_letter
         if not df.empty:
@@ -1184,6 +1195,10 @@ def format_excel_sheet_cepat(ws, df):
             max_data_len = 0
         final_width = min(max(max(len(str(col_name)) + 4, max_data_len + 3), 12), 48)
         ws.column_dimensions[col_letter].width = final_width
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
+        for cell in row:
+            cell.border = CELL_BORDER
 
     ws.freeze_panes = 'A2'
     if ws.max_row >= 1 and ws.max_column >= 1:
@@ -1290,7 +1305,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
                 kpi_stats[gudang_norm] = {
                     'total': 0, 'clean': 0, 'bermasalah': 0,
                     'err_qty': 0, 'err_var': 0, 'err_kelengkapan': 0,
-                    'pibc_kosong': 0, 'mesin_tdk_terdaftar': 0
+                    'pibc_kosong': 0, 'pibc_miss_pg': 0, 'mesin_tdk_terdaftar': 0
                 }
             kpi_stats[gudang_norm]['total'] += 1
 
@@ -1299,18 +1314,23 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
             c_pm = str(first_row.get('Cek Item (PG vs Memphis)', '')).strip()
             info_m = str(first_row.get('Info Mesin', '')).strip()
 
-            ada_err_kelengkapan = is_cek_item_bermasalah(c_mm) or is_cek_item_bermasalah(c_mp) or is_cek_item_bermasalah(c_pm)
-            if ada_err_kelengkapan:
-                kode_kelengkapan_err.add(k_val)
-                kpi_stats[gudang_norm]['err_kelengkapan'] += 1
+            pibc_kosong_di_mb = (c_mm == 'KODE PIBC TIDAK ADA')
+            pibc_miss_memphis = (c_mm == 'KODE PIBC TIDAK ADA DI MEMPHIS')
+            pibc_miss_pg = (c_mp == 'KODE PIBC TIDAK ADA DI PG')
+            pibc_miss_both = pibc_miss_memphis and pibc_miss_pg
 
-            if c_mm == 'KODE PIBC TIDAK ADA':
+            ada_err_kelengkapan = is_cek_item_bermasalah(c_mm) or is_cek_item_bermasalah(c_mp) or is_cek_item_bermasalah(c_pm)
+
+            if pibc_kosong_di_mb:
                 kpi_stats[gudang_norm]['pibc_kosong'] += 1
+            if pibc_miss_both or pibc_miss_pg:
+                kpi_stats[gudang_norm]['pibc_miss_pg'] += 1
             if 'TIDAK TERDAFTAR' in info_m.upper():
                 kpi_stats[gudang_norm]['mesin_tdk_terdaftar'] += 1
 
             ada_err_qty_grup = False
             ada_err_var_grup = False
+            ada_item_nf_spesifik = False
             baris_ringkas_grup = []
 
             for _, row in df_sub.iterrows():
@@ -1320,19 +1340,27 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
                 if cq == 'MEMANG SELISIH':
                     kode_ms_set.add(k_val)
 
-                is_qty_err = ('INCORRECT' in cq or 'SELISIH' in cq or 'ITEM TIDAK DI TEMUKAN' in cq) and cq != 'MEMANG SELISIH'
+                is_qty_err = ('INCORRECT' in cq or 'SELISIH' in cq) and cq != 'MEMANG SELISIH'
                 is_var_err = cv != '' and cv != 'CLEAN'
+                is_item_nf_row = ('ITEM TIDAK DI TEMUKAN' in cq) and (not pibc_miss_both) and (not pibc_miss_pg)
 
                 if is_qty_err: ada_err_qty_grup = True
                 if is_var_err: ada_err_var_grup = True
+                if is_item_nf_row: ada_item_nf_spesifik = True
 
-                if is_qty_err or is_var_err:
+                if is_qty_err or is_var_err or is_item_nf_row:
                     item_bermasalah = f"{row.get('Kode Item', '')} - {row.get('Nama Item', '')}"
                     if is_qty_err and is_var_err:
                         jenis = "Dobel Error (Varian & Qty)"
                         detail = f"Varian: {cv}. Qty: {cq}"
+                    elif is_item_nf_row and is_var_err:
+                        jenis = "Dobel Error (Varian & Item Tidak Ditemukan)"
+                        detail = f"Varian: {cv}. Item: {cq}"
                     elif is_qty_err:
                         jenis = "Selisih Kuantitas"
+                        detail = cq
+                    elif is_item_nf_row:
+                        jenis = "Item Tidak Ditemukan"
                         detail = cq
                     else:
                         jenis = "Pelanggaran SOP Varian"
@@ -1368,6 +1396,12 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
                         'Catatan Auditor': ''
                     })
 
+            if ada_item_nf_spesifik:
+                ada_err_kelengkapan = True
+
+            if ada_err_kelengkapan:
+                kode_kelengkapan_err.add(k_val)
+                kpi_stats[gudang_norm]['err_kelengkapan'] += 1
             if ada_err_qty_grup:
                 kode_qty_err.add(k_val)
                 kpi_stats[gudang_norm]['err_qty'] += 1
@@ -1375,14 +1409,68 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
                 kode_var_err.add(k_val)
                 kpi_stats[gudang_norm]['err_var'] += 1
 
-            if ada_err_qty_grup or ada_err_var_grup or ada_err_kelengkapan:
+            if ada_err_qty_grup or ada_err_var_grup or ada_err_kelengkapan or pibc_miss_both or pibc_miss_pg:
                 kpi_stats[gudang_norm]['bermasalah'] += 1
             else:
                 kpi_stats[gudang_norm]['clean'] += 1
 
             if baris_ringkas_grup:
                 data_ringkas.extend(baris_ringkas_grup)
-            elif ada_err_kelengkapan:
+
+            # Ringkas 1 baris per Kode MB jika Kode PIBC tidak terdaftar di Master PG / Memphis & PG
+            if pibc_miss_both:
+                data_ringkas.append({
+                    'Gudang': first_row.get('Gudang', ''),
+                    'Kode': first_row.get('Kode', ''),
+                    'Tanggal': first_row.get('Tanggal', ''),
+                    'Info Mesin': info_m,
+                    'Keterangan': first_row.get('Keterangan', ''),
+                    'Keterangan Lain': first_row.get('Keterangan Lain', ''),
+                    'Kode PIBC Terdeteksi': first_row.get('Ext_PIBC', ''),
+                    'Item Bermasalah': '(Kode PIBC Tidak Ada di Master Memphis & PG)',
+                    'Qty Target Standar (GR)': None,
+                    'Qty BB Standar (GR)': None,
+                    'Qty Memphis': None,
+                    'Qty PG': None,
+                    'Selisih Benang (GR)': None,
+                    'Selisih Memphis (GR)': None,
+                    'Selisih PG (GR)': None,
+                    'Selisih PG vs Memphis (GR)': None,
+                    'Jenis Temuan': 'PIBC Tidak Ada di Memphis & PG',
+                    'Detail Kesalahan & Seharusnya': 'Kode PIBC tidak ditemukan di Master Memphis maupun Master PG',
+                    'Cek Item (MB vs Memphis)': c_mm,
+                    'Cek Item (MB vs PG)': c_mp,
+                    'Cek Item (PG vs Memphis)': c_pm,
+                    'Kode Transaksi PG': '',
+                    'Catatan Auditor': ''
+                })
+            elif pibc_miss_pg:
+                data_ringkas.append({
+                    'Gudang': first_row.get('Gudang', ''),
+                    'Kode': first_row.get('Kode', ''),
+                    'Tanggal': first_row.get('Tanggal', ''),
+                    'Info Mesin': info_m,
+                    'Keterangan': first_row.get('Keterangan', ''),
+                    'Keterangan Lain': first_row.get('Keterangan Lain', ''),
+                    'Kode PIBC Terdeteksi': first_row.get('Ext_PIBC', ''),
+                    'Item Bermasalah': '(Kode PIBC Tidak Ada di Master PG)',
+                    'Qty Target Standar (GR)': None,
+                    'Qty BB Standar (GR)': None,
+                    'Qty Memphis': None,
+                    'Qty PG': None,
+                    'Selisih Benang (GR)': None,
+                    'Selisih Memphis (GR)': None,
+                    'Selisih PG (GR)': None,
+                    'Selisih PG vs Memphis (GR)': None,
+                    'Jenis Temuan': 'PIBC Tidak Ada di PG',
+                    'Detail Kesalahan & Seharusnya': 'Kode PIBC tidak ditemukan di Master PG pada gudang terkait',
+                    'Cek Item (MB vs Memphis)': c_mm,
+                    'Cek Item (MB vs PG)': c_mp,
+                    'Cek Item (PG vs Memphis)': c_pm,
+                    'Kode Transaksi PG': '',
+                    'Catatan Auditor': ''
+                })
+            elif (not baris_ringkas_grup) and ada_err_kelengkapan:
                 sumber_err = []
                 if is_cek_item_bermasalah(c_mm): sumber_err.append("MB vs Memphis")
                 if is_cek_item_bermasalah(c_mp): sumber_err.append("MB vs PG")
@@ -1415,7 +1503,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
 
         # --- Sheet 1: Ringkasan KPI ---
         kpi_rows = []
-        tot_all = {k: 0 for k in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'mesin_tdk_terdaftar', 'pg_over7']}
+        tot_all = {k: 0 for k in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar', 'pg_over7']}
         for g_name, st_val in kpi_stats.items():
             pg7 = pg_over7_per_gudang.get(g_name, 0)
             pct = round((st_val['clean'] / st_val['total'] * 100.0), 2) if st_val['total'] > 0 else 0.0
@@ -1428,11 +1516,12 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
                 'Kasus Error Qty': st_val['err_qty'],
                 'Kasus Error Varian': st_val['err_var'],
                 'Kasus Ketidaklengkapan Item': st_val['err_kelengkapan'],
+                'Kasus PIBC Tidak Ada di PG': st_val['pibc_miss_pg'],
                 'Kasus PIBC Tidak Ada di MB': st_val['pibc_kosong'],
                 'Kasus Mesin Tidak Terdaftar': st_val['mesin_tdk_terdaftar'],
                 'PG Pending > 7 Hari': pg7
             })
-            for key_t in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'mesin_tdk_terdaftar']:
+            for key_t in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar']:
                 tot_all[key_t] += st_val[key_t]
             tot_all['pg_over7'] += pg7
 
@@ -1446,6 +1535,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
             'Kasus Error Qty': tot_all['err_qty'],
             'Kasus Error Varian': tot_all['err_var'],
             'Kasus Ketidaklengkapan Item': tot_all['err_kelengkapan'],
+            'Kasus PIBC Tidak Ada di PG': tot_all['pibc_miss_pg'],
             'Kasus PIBC Tidak Ada di MB': tot_all['pibc_kosong'],
             'Kasus Mesin Tidak Terdaftar': tot_all['mesin_tdk_terdaftar'],
             'PG Pending > 7 Hari': tot_all['pg_over7']
@@ -1455,23 +1545,36 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
         ws_kpi = writer.sheets['Ringkasan KPI']
         format_excel_sheet(ws_kpi, df_kpi, None, filter_end_row=len(df_kpi) + 1)
 
-        # Tambahan Ringkasan Pending Master Memphis & PG di bawah tabel KPI
+        # Tambahan Tabel Ringkasan Pending Master Memphis & PG di bawah tabel KPI (dengan border tegas)
         start_r = len(df_kpi) + 4
         mem_tot = len(df_belum_pibc)
         mem_over7 = int((df_belum_pibc['Masa PIBC'].fillna(-1) > 7).sum()) if (not df_belum_pibc.empty and 'Masa PIBC' in df_belum_pibc.columns) else 0
         pg_tot = len(df_belum_pg)
         pg_over7_tot = int((df_belum_pg['Masa PG'].fillna(-1) > 7).sum()) if (not df_belum_pg.empty and 'Masa PG' in df_belum_pg.columns) else 0
 
-        ws_kpi.cell(row=start_r, column=1, value="Ringkasan Dokumen Belum Diproses (Aging)").font = Font(bold=True)
-        ws_kpi.cell(row=start_r + 1, column=1, value="Master Memphis Belum Diproses (Total Baris)")
-        ws_kpi.cell(row=start_r + 1, column=2, value=mem_tot).number_format = '#,##0'
-        ws_kpi.cell(row=start_r + 1, column=3, value="> 7 Hari:")
-        ws_kpi.cell(row=start_r + 1, column=4, value=mem_over7).number_format = '#,##0'
+        hdr_fill = PatternFill(start_color='FFD51C39', end_color='FFD51C39', fill_type='solid')
+        hdr_font = Font(color='FFFFFFFF', bold=True)
+        sub_headers = ["Ringkasan Dokumen Belum Diproses (Aging)", "Total Baris", "Pending > 7 Hari"]
+        for c_i, h_text in enumerate(sub_headers, start=1):
+            c = ws_kpi.cell(row=start_r, column=c_i, value=h_text)
+            c.fill = hdr_fill
+            c.font = hdr_font
+            c.border = HEADER_BORDER
+            c.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws_kpi.cell(row=start_r + 2, column=1, value="Master PG Belum Diproses (Total Baris)")
-        ws_kpi.cell(row=start_r + 2, column=2, value=pg_tot).number_format = '#,##0'
-        ws_kpi.cell(row=start_r + 2, column=3, value="> 7 Hari:")
-        ws_kpi.cell(row=start_r + 2, column=4, value=pg_over7_tot).number_format = '#,##0'
+        sub_rows = [
+            ("Master Memphis Belum Diproses", mem_tot, mem_over7),
+            ("Master PG Belum Diproses", pg_tot, pg_over7_tot)
+        ]
+        for r_offset, (label_s, v_tot, v_over7) in enumerate(sub_rows, start=1):
+            c1 = ws_kpi.cell(row=start_r + r_offset, column=1, value=label_s)
+            c2 = ws_kpi.cell(row=start_r + r_offset, column=2, value=v_tot)
+            c3 = ws_kpi.cell(row=start_r + r_offset, column=3, value=v_over7)
+            c1.border = CELL_BORDER
+            c2.border = CELL_BORDER
+            c3.border = CELL_BORDER
+            c2.number_format = '#,##0'
+            c3.number_format = '#,##0'
 
         # --- Sheet 2: Laporan Ringkas Admin ---
         kolom_fix = [
@@ -1585,7 +1688,8 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc, df_pg=None):
                         'Tanggal': row.get('Tanggal', ''),
                         'Kode PIBC Tidak Ditemukan': ", ".join(bodong),
                         'Status di PG': status_pg_str,
-                        'Keterangan Asli': row.get('Keterangan', '')
+                        'Keterangan': row.get('Keterangan', ''),
+                        'Keterangan Lain': row.get('Keterangan Lain', '')
                     })
 
         df_bodong = pd.DataFrame(data_bodong)
@@ -1660,7 +1764,8 @@ def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
                         'Tanggal': row.get('Tanggal', ''),
                         'Kode PG Tidak Ditemukan': ", ".join(bodong),
                         'Status Temuan PG': status_temuan,
-                        'Keterangan Asli': row.get('Keterangan', '')
+                        'Keterangan': row.get('Keterangan', ''),
+                        'Keterangan Lain': row.get('Keterangan Lain', '')
                     })
                     
         df_bodong = pd.DataFrame(data_bodong)
