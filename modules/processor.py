@@ -469,7 +469,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                     if k_kode: pibc_lookup_tgt[(k_ticket, k_kode)] = round(pibc_lookup_tgt.get((k_ticket, k_kode), 0.0) + val_tgt, 3)
                     if k_nama: pibc_lookup_tgt[(k_ticket, k_nama)] = round(pibc_lookup_tgt.get((k_ticket, k_nama), 0.0) + val_tgt, 3)
 
-                # Item aktif di Memphis: Actual > 0, atau khusus BIOWHITE/SYNERWHITE dengan 0 < Target < 100
                 if (val_act > 0) or (is_bw_sw and 0 < val_tgt < 100.0):
                     canon_k = k_kode or k_nama
                     if canon_k:
@@ -859,7 +858,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
                         
-                        # Aturan BIOWHITE / SYNERWHITE: pakai Target jika Qty BB Standar < 100 GR, selain itu tetap Actual
                         use_target_memphis = is_target_keyword(nama_item) and (qty_bb_cek < 100.0)
                         lookup_memphis = pibc_lookup_tgt if use_target_memphis else pibc_lookup_act
                         
@@ -976,7 +974,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         if ck not in items_pg_final:
                             items_pg_final[ck] = info_it
 
-                # Cek Item (MB vs Memphis)
                 if not has_memphis:
                     df_mb.loc[idx_first, 'Cek Item (MB vs Memphis)'] = 'KODE PIBC TIDAK ADA DI MEMPHIS'
                 else:
@@ -984,7 +981,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         items_mb_final, items_memphis_final, 'MB', cek_lebih=(not is_mesin_kecil)
                     )
 
-                # Cek Item (MB vs PG) -> Selalu 2 Arah Penuh
                 if not has_pg:
                     df_mb.loc[idx_first, 'Cek Item (MB vs PG)'] = 'KODE PIBC TIDAK ADA DI PG'
                 else:
@@ -992,7 +988,6 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         items_mb_final, items_pg_final, 'MB', cek_lebih=True
                     )
 
-                # Cek Item (PG vs Memphis)
                 if not has_memphis and not has_pg:
                     df_mb.loc[idx_first, 'Cek Item (PG vs Memphis)'] = 'KODE PIBC TIDAK ADA DI MEMPHIS & PG'
                 elif not has_memphis:
@@ -1056,7 +1051,8 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
         'Cek Item (MB vs Memphis)', 'Cek Item (MB vs PG)', 'Cek Item (PG vs Memphis)',
         'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC',
         'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya',
-        'Item Bermasalah', 'Keterangan Asli', 'Status di PG', 'Status Temuan PG'
+        'Item Bermasalah', 'Keterangan Asli', 'Status di PG', 'Status Temuan PG',
+        'Jenis Duplikat', 'Tindakan Sistem', 'Nama File Asal', 'PIBC / Keterangan'
     ]
     
     def is_int_col(c_name):
@@ -1275,11 +1271,10 @@ def buat_excel_hasil_keseluruhan(df_hasil, df_pibc=None, df_pg=None):
         _tulis_sheet_master_clean(writer, df_pibc, df_pg)
     return output.getvalue()
 
-def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
+def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=None):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # --- Persiapan Data KPI & Laporan Ringkas Admin ---
         df_belum_pibc = _dapatkan_df_belum_diproses_pibc(df_hasil, df_pibc)
         df_belum_pg = _dapatkan_df_belum_diproses_pg(df_hasil, df_pg)
 
@@ -1418,7 +1413,6 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
             if baris_ringkas_grup:
                 data_ringkas.extend(baris_ringkas_grup)
 
-            # Ringkas 1 baris per Kode MB jika Kode PIBC tidak terdaftar di Master PG / Memphis & PG
             if pibc_miss_both:
                 data_ringkas.append({
                     'Gudang': first_row.get('Gudang', ''),
@@ -1546,7 +1540,6 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
         ws_kpi = writer.sheets['Ringkasan KPI']
         format_excel_sheet(ws_kpi, df_kpi, None, filter_end_row=len(df_kpi) + 1)
 
-        # Tambahan Tabel Ringkasan Pending Master Memphis & PG di bawah tabel KPI (dengan border tegas)
         start_r = len(df_kpi) + 4
         mem_tot = len(df_belum_pibc)
         mem_over7 = int((df_belum_pibc['Masa PIBC'].fillna(-1) > 7).sum()) if (not df_belum_pibc.empty and 'Masa PIBC' in df_belum_pibc.columns) else 0
@@ -1638,7 +1631,16 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None):
             df_info.to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
             format_excel_sheet(writer.sheets['Memang Selisih (Full Grup)'], df_info, None)
 
-        # --- Sheet 7 & 8: Master Clean ---
+        # --- Sheet 7: Log Duplikat (Jejak Audit Data Ganda) ---
+        if df_log_duplikat is not None and not df_log_duplikat.empty:
+            df_log_duplikat.to_excel(writer, index=False, sheet_name='Log Duplikat')
+            format_excel_sheet(writer.sheets['Log Duplikat'], df_log_duplikat, 'No. Transaksi / Kode')
+        else:
+            df_info = pd.DataFrame({'Info': ['Tidak ditemukan data duplikat (lintas file maupun dalam 1 file)']})
+            df_info.to_excel(writer, index=False, sheet_name='Log Duplikat')
+            format_excel_sheet(writer.sheets['Log Duplikat'], df_info, None)
+
+        # --- Sheet 8 & 9: Master Clean ---
         _tulis_sheet_master_clean(writer, df_pibc, df_pg)
             
     return output.getvalue()
