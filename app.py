@@ -20,14 +20,12 @@ from modules.processor import (
 )
 import base64
 
-# Konfigurasi Halaman (Harus selalu di paling atas)
 st.set_page_config(
     page_title="Data Control Dyeing (DCD)",
     page_icon="🧪",
     layout="wide"
 )
 
-# Fungsi untuk memuat gambar background lokal agar terbaca oleh CSS
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:
@@ -36,16 +34,11 @@ def get_base64_of_bin_file(bin_file):
     except:
         return ""
 
-# Membaca file bg_datacenter.png secara lokal
 bin_str = get_base64_of_bin_file('bg_datacenter.png')
 bg_css = f"data:image/png;base64,{bin_str}" if bin_str else ""
 
-# ==========================================
-# INJEKSI TEMA UI/UX: SIDEBAR & GLASSMORPHISM 3D
-# ==========================================
 st.markdown(f"""
 <style>
-    /* MENGGUNAKAN BACKGROUND DATACENTER LOKAL */
     [data-testid="stAppViewContainer"] {{
         background-image: 
             linear-gradient(rgba(5, 5, 20, 0.75), rgba(10, 5, 25, 0.85)),
@@ -55,13 +48,9 @@ st.markdown(f"""
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
     }}
-    
-    /* Menghilangkan background bawaan Streamlit agar transparan */
     .stApp, [data-testid="stHeader"] {{
         background: transparent !important;
     }}
-    
-    /* MODIFIKASI SIDEBAR GLASSMORPHISM 3D */
     [data-testid="stSidebar"] {{
         background: rgba(10, 10, 25, 0.65) !important;
         backdrop-filter: blur(16px);
@@ -71,27 +60,20 @@ st.markdown(f"""
             5px 0px 30px rgba(127, 0, 255, 0.25),
             inset -1px 0px 0px 0px rgba(255, 255, 255, 0.1);
     }}
-
-    /* MEMBERSIHKAN TULISAN GLITCH "keyboard_double" PADA HOVER SIDEBAR SECARA AMAN */
     [data-testid="stSidebar"] header {{
         display: flex;
         align-items: center;
         justify-content: flex-end;
         padding-right: 10px;
     }}
-    
     [data-testid="stSidebar"] header span:not(:has(svg)) {{
         display: none !important;
     }}
-
-    /* Styling Teks di dalam Sidebar */
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {{
         color: #00f3ff !important;
         font-family: 'Courier New', Courier, monospace;
         letter-spacing: 1px;
     }}
-
-    /* Kotak Pilihan Menu (Selectbox) di Sidebar agar Senada */
     [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
         background-color: rgba(15, 15, 35, 0.8) !important;
         border: 1px solid rgba(0, 243, 255, 0.4) !important;
@@ -99,22 +81,15 @@ st.markdown(f"""
         color: #ffffff !important;
         box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.1);
     }}
-
     [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
         fill: #00f3ff !important;
     }}
-    
-    /* Warna Teks Umum */
     p, span, label, .stMarkdown, .stText {{
         color: #c9c9e8 !important;
     }}
-
-    /* Mengurangi jarak kosong di bagian atas */
     [data-testid="block-container"] {{
         padding-top: 2rem !important;
     }}
-
-    /* EFEK KACA 3D (GLASSMORPHISM HEADER CARD) */
     .glass-header-card {{
         background: rgba(15, 15, 35, 0.45);
         backdrop-filter: blur(12px);
@@ -133,8 +108,6 @@ st.markdown(f"""
         justify-content: center;
         width: 100%;
     }}
-
-    /* TOMBOL KENDALI (INDUSTRIAL NEON) */
     .stButton > button, [data-testid="stDownloadButton"] > button {{
         background: linear-gradient(45deg, #0d0d26, #1a0033) !important;
         color: #00f3ff !important;
@@ -147,15 +120,12 @@ st.markdown(f"""
         box-shadow: 0 0 10px rgba(0, 243, 255, 0.3) inset, 0 0 10px rgba(0, 243, 255, 0.3) !important;
         transition: all 0.3s ease-in-out;
     }}
-    
     .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {{
         background: linear-gradient(45deg, #0033aa, #7f00ff) !important;
         border: 1px solid #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.8), 0 0 30px rgba(127, 0, 255, 0.6) !important;
         color: #ffffff !important;
     }}
-
-    /* AREA UPLOAD FILE (HUD SCANNER) */
     [data-testid="stFileUploadDropzone"] {{
         background-color: rgba(5, 5, 20, 0.75) !important;
         border: 1px dashed #7f00ff !important;
@@ -164,24 +134,18 @@ st.markdown(f"""
         backdrop-filter: blur(5px);
         transition: all 0.3s ease;
     }}
-    
     [data-testid="stFileUploadDropzone"]:hover {{
         background-color: rgba(15, 5, 40, 0.9) !important;
         border: 1px dashed #00f3ff !important;
         box-shadow: 0 0 20px rgba(0, 243, 255, 0.3) inset, 0 0 15px rgba(0, 243, 255, 0.3);
     }}
-    
     [data-testid="stFileUploadDropzone"] * {{
         color: #00f3ff !important;
     }}
-
-    /* Garis pembatas (Divider) */
     hr {{
         border-top: 1px solid #7f00ff !important;
         box-shadow: 0px 0px 10px #7f00ff;
     }}
-
-    /* Tabel Dataframe (Monitor Display) */
     [data-testid="stDataFrame"] {{
         border: 1px solid #00f3ff;
         box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
@@ -190,7 +154,6 @@ st.markdown(f"""
     }}
 </style>
 """, unsafe_allow_html=True)
-# ==========================================
 
 st.markdown("""
     <div class="glass-header-card">
@@ -199,7 +162,6 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# 1. Inisialisasi Session State
 for state_key in [
     'df_hasil_crosscheck', 'df_pibc_bersih', 'df_pg_bersih', 'df_mesin_bersih',
     'df_log_duplikat', 'peringatan_duplikasi', 'paket_unduhan', 'stempel_tanggal'
@@ -227,7 +189,6 @@ if menu == "Cross Check Data":
                 peringatan_list = []
                 log_parts = []
 
-                # 1. Bersihkan Data Master Memphis & PG (termasuk auto-dedup lintas file PG)
                 df_pibc_bersih = bersihkan_master_pibc(uploaded_pibc)
                 
                 df_pg_bersih = None
@@ -240,7 +201,6 @@ if menu == "Cross Check Data":
                 if uploaded_mesin:
                     df_mesin_bersih = bersihkan_master_mesin(uploaded_mesin)
                 
-                # 2. Proses, Gabungkan, dan Auto-Dedup File Master MB
                 list_tuple_mb = []
                 for idx_m, file_mb in enumerate(uploaded_mb):
                     fname_mb = getattr(file_mb, 'name', f'File_MB_{idx_m + 1}')
@@ -248,7 +208,7 @@ if menu == "Cross Check Data":
                     df_siap = siapkan_kolom_standar(df_bersih)
                     list_tuple_mb.append((fname_mb, df_siap))
 
-                df_final_mb, df_log_mb = deduplikasi_lintas_file_mb(list_tuple_mb)
+                df_final_mb, df_log_mb, duplikat_mb_map = deduplikasi_lintas_file_mb(list_tuple_mb)
                 if not df_log_mb.empty:
                     log_parts.append(df_log_mb)
 
@@ -258,32 +218,37 @@ if menu == "Cross Check Data":
                     pd.DataFrame(columns=KOLOM_LOG_DUPLIKAT)
                 )
 
-                # Ringkasan Notifikasi Duplikat untuk Layar Streamlit
                 if not df_log_duplikat.empty:
                     for sumber in ['Master PG', 'Master MB']:
                         sub_s = df_log_duplikat[df_log_duplikat['Sumber Master'] == sumber]
                         if sub_s.empty:
                             continue
+
                         sub_lintas = sub_s[sub_s['Jenis Duplikat'].str.contains('Lintas File', na=False)]
                         if not sub_lintas.empty:
-                            jml_dok = sub_lintas['No. Transaksi / Kode'].nunique()
-                            jml_beda = sub_lintas[sub_lintas['Jenis Duplikat'].str.contains('Isi Berbeda', na=False)]['No. Transaksi / Kode'].nunique()
-                            info_beda = f" ({jml_beda} dokumen terdeteksi ada perubahan isi antar file)" if jml_beda > 0 else ""
+                            jml_dok = len(sub_lintas)
+                            jml_beda = int(sub_lintas['Jenis Duplikat'].str.contains('Isi Berbeda', na=False).sum())
+                            info_beda = f" ({jml_beda} dokumen terdeteksi isi berbeda antar file)" if jml_beda > 0 else ""
                             peringatan_list.append(
-                                f"{sumber}: {jml_dok} dokumen duplikat lintas file otomatis dibersihkan (mempertahankan versi file urutan terakhir){info_beda}. Rincian tersimpan di Log Duplikat."
+                                f"{sumber}: {jml_dok} kode transaksi duplikat lintas file (gudang sama) otomatis dibersihkan dengan mempertahankan versi file terakhir{info_beda}."
                             )
-                        sub_dalam = sub_s[sub_s['Jenis Duplikat'].str.contains('Dalam 1 File', na=False)]
-                        if not sub_dalam.empty:
-                            jml_baris_in = len(sub_dalam)
-                            jml_dok_in = sub_dalam['No. Transaksi / Kode'].nunique()
+
+                        sub_blok_c = sub_s[sub_s['Jenis Duplikat'].str.contains('Dalam 1 File', na=False)]
+                        if not sub_blok_c.empty:
                             peringatan_list.append(
-                                f"{sumber}: Terdeteksi {jml_baris_in} baris identik dalam 1 file yang sama ({jml_dok_in} dokumen). Data TIDAK dihapus otomatis agar potensi input ganda / bug ERP tetap tertangkap di audit."
+                                f"{sumber}: {len(sub_blok_c)} blok transaksi identik berulang (sama Kode MB dalam 1 file) otomatis dibersihkan."
+                            )
+
+                        sub_beda_a = sub_s[sub_s['Jenis Duplikat'].str.contains('Beda Kode', na=False)]
+                        if not sub_beda_a.empty:
+                            peringatan_list.append(
+                                f"{sumber}: Terdeteksi {len(sub_beda_a)} Kode MB dengan seluruh isi kelompok transaksi identik (beda Kode). Data TIDAK dihapus otomatis — cek kolom Info dan Indikasi serta Log Duplikat."
                             )
                 
-                # 3. Jalankan Eksekusi Logika Utama
-                df_hasil = jalankan_proses_crosscheck(df_final_mb, df_pibc_bersih, df_pg_bersih, df_mesin_bersih)
+                df_hasil = jalankan_proses_crosscheck(
+                    df_final_mb, df_pibc_bersih, df_pg_bersih, df_mesin_bersih, duplikat_mb_map
+                )
 
-                # 4. Pre-Generate Seluruh File Laporan & Paket ZIP dengan Stempel Tanggal WIB
                 tgl_str = get_hari_ini_wib().strftime("%Y%m%d")
                 nama_f1 = f"Hasil_Crosscheck_DCD_Lengkap_{tgl_str}.xlsx"
                 nama_f2 = f"Rekap_Audit_Temuan_DCD_{tgl_str}.xlsx"
@@ -301,7 +266,6 @@ if menu == "Cross Check Data":
                     nama_f4: bytes_pg
                 })
                 
-                # SIMPAN HASIL KE SESSION STATE
                 st.session_state['df_hasil_crosscheck'] = df_hasil
                 st.session_state['df_pibc_bersih'] = df_pibc_bersih
                 st.session_state['df_pg_bersih'] = df_pg_bersih
@@ -321,7 +285,6 @@ if menu == "Cross Check Data":
         else:
             st.warning("Mohon upload setidaknya file Master MB dan Master Memphis (PIBC) terlebih dahulu.")
 
-    # 2. TAMPILAN STAY: Mengambil data dari Session State
     if st.session_state['df_hasil_crosscheck'] is not None:
         df_hasil = st.session_state['df_hasil_crosscheck']
         df_log_dup = st.session_state.get('df_log_duplikat')
@@ -332,7 +295,7 @@ if menu == "Cross Check Data":
             st.warning(msg)
 
         if df_log_dup is not None and not df_log_dup.empty:
-            with st.expander(f"🔍 Lihat Rincian Log Duplikat ({len(df_log_dup)} baris terdeteksi)"):
+            with st.expander(f"🔍 Lihat Rincian Log Duplikat ({len(df_log_dup)} dokumen terdeteksi)"):
                 st.dataframe(df_log_dup, use_container_width=True)
 
         st.markdown("---")
