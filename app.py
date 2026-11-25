@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 from modules.cleaner import (
+    KOLOM_LOG_DUPLIKAT,
     bersihkan_master_mb,
+    deduplikasi_lintas_file_mb,
     bersihkan_master_pibc,
     bersihkan_master_pg,
-    bersihkan_master_mesin,
-    deteksi_duplikasi_mb,
-    deteksi_duplikasi_pg
+    bersihkan_master_mesin
 )
 from modules.processor import (
     siapkan_kolom_standar, 
@@ -192,7 +192,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 # ==========================================
 
-# HEADER DENGAN FRAME KACA 3D & PENYESUAIAN FONT-SIZE SUBTITLE AGAR PRESISI
 st.markdown("""
     <div class="glass-header-card">
         <h1 style="color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: 900; letter-spacing: 3px; font-size: 2.5rem; text-transform: uppercase; margin: 0; padding: 0; text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff, 0 0 40px #7f00ff, 0 0 80px #7f00ff; text-align: center;">DATA CONTROL DYEING (DCD)</h1>
@@ -200,10 +199,10 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# 1. Inisialisasi Session State agar data & file unduhan tetap tersimpan (STAY)
+# 1. Inisialisasi Session State
 for state_key in [
     'df_hasil_crosscheck', 'df_pibc_bersih', 'df_pg_bersih', 'df_mesin_bersih',
-    'peringatan_duplikasi', 'paket_unduhan', 'stempel_tanggal'
+    'df_log_duplikat', 'peringatan_duplikasi', 'paket_unduhan', 'stempel_tanggal'
 ]:
     if state_key not in st.session_state:
         st.session_state[state_key] = None
@@ -224,39 +223,62 @@ if menu == "Cross Check Data":
         
     if st.button("Proses Data Sekarang", type="primary"):
         if uploaded_mb and uploaded_pibc:
-            with st.spinner("Sedang membersihkan, memproses audit 3 arah, dan menyiapkan laporan Excel..."):
+            with st.spinner("Sedang membersihkan, mengecek duplikat, memproses audit 3 arah, dan menyiapkan laporan Excel..."):
                 peringatan_list = []
+                log_parts = []
 
-                # 1. Bersihkan Data Master
+                # 1. Bersihkan Data Master Memphis & PG (termasuk auto-dedup lintas file PG)
                 df_pibc_bersih = bersihkan_master_pibc(uploaded_pibc)
                 
                 df_pg_bersih = None
                 if uploaded_pg:
-                    dup_pg = deteksi_duplikasi_pg(uploaded_pg)
-                    if dup_pg:
-                        contoh_pg = ", ".join(dup_pg[:5]) + ("..." if len(dup_pg) > 5 else "")
-                        peringatan_list.append(f"Terdeteksi {len(dup_pg)} No. Transaksi PG ganda di lintas file upload ({contoh_pg}). Mohon cek agar tidak terjadi penjumlahan ganda.")
-                    df_pg_bersih = bersihkan_master_pg(uploaded_pg)
+                    df_pg_bersih, df_log_pg = bersihkan_master_pg(uploaded_pg, return_log=True)
+                    if not df_log_pg.empty:
+                        log_parts.append(df_log_pg)
 
                 df_mesin_bersih = None
                 if uploaded_mesin:
                     df_mesin_bersih = bersihkan_master_mesin(uploaded_mesin)
                 
-                # 2. Proses dan Gabungkan File Master MB
-                df_bersih_mb_list = []
-                df_gabung_list = []
-                for file_mb in uploaded_mb:
+                # 2. Proses, Gabungkan, dan Auto-Dedup File Master MB
+                list_tuple_mb = []
+                for idx_m, file_mb in enumerate(uploaded_mb):
+                    fname_mb = getattr(file_mb, 'name', f'File_MB_{idx_m + 1}')
                     df_bersih = bersihkan_master_mb(file_mb)
-                    df_bersih_mb_list.append(df_bersih)
                     df_siap = siapkan_kolom_standar(df_bersih)
-                    df_gabung_list.append(df_siap)
+                    list_tuple_mb.append((fname_mb, df_siap))
 
-                dup_mb = deteksi_duplikasi_mb(df_bersih_mb_list)
-                if dup_mb:
-                    contoh_mb = ", ".join(dup_mb[:5]) + ("..." if len(dup_mb) > 5 else "")
-                    peringatan_list.append(f"Terdeteksi {len(dup_mb)} Kode MB ganda di lintas file upload ({contoh_mb}). Mohon cek apakah ada rentang tanggal file yang tumpang tindih.")
-                
-                df_final_mb = pd.concat(df_gabung_list, ignore_index=True)
+                df_final_mb, df_log_mb = deduplikasi_lintas_file_mb(list_tuple_mb)
+                if not df_log_mb.empty:
+                    log_parts.append(df_log_mb)
+
+                df_log_duplikat = (
+                    pd.concat(log_parts, ignore_index=True)
+                    if log_parts else
+                    pd.DataFrame(columns=KOLOM_LOG_DUPLIKAT)
+                )
+
+                # Ringkasan Notifikasi Duplikat untuk Layar Streamlit
+                if not df_log_duplikat.empty:
+                    for sumber in ['Master PG', 'Master MB']:
+                        sub_s = df_log_duplikat[df_log_duplikat['Sumber Master'] == sumber]
+                        if sub_s.empty:
+                            continue
+                        sub_lintas = sub_s[sub_s['Jenis Duplikat'].str.contains('Lintas File', na=False)]
+                        if not sub_lintas.empty:
+                            jml_dok = sub_lintas['No. Transaksi / Kode'].nunique()
+                            jml_beda = sub_lintas[sub_lintas['Jenis Duplikat'].str.contains('Isi Berbeda', na=False)]['No. Transaksi / Kode'].nunique()
+                            info_beda = f" ({jml_beda} dokumen terdeteksi ada perubahan isi antar file)" if jml_beda > 0 else ""
+                            peringatan_list.append(
+                                f"{sumber}: {jml_dok} dokumen duplikat lintas file otomatis dibersihkan (mempertahankan versi file urutan terakhir){info_beda}. Rincian tersimpan di Log Duplikat."
+                            )
+                        sub_dalam = sub_s[sub_s['Jenis Duplikat'].str.contains('Dalam 1 File', na=False)]
+                        if not sub_dalam.empty:
+                            jml_baris_in = len(sub_dalam)
+                            jml_dok_in = sub_dalam['No. Transaksi / Kode'].nunique()
+                            peringatan_list.append(
+                                f"{sumber}: Terdeteksi {jml_baris_in} baris identik dalam 1 file yang sama ({jml_dok_in} dokumen). Data TIDAK dihapus otomatis agar potensi input ganda / bug ERP tetap tertangkap di audit."
+                            )
                 
                 # 3. Jalankan Eksekusi Logika Utama
                 df_hasil = jalankan_proses_crosscheck(df_final_mb, df_pibc_bersih, df_pg_bersih, df_mesin_bersih)
@@ -269,7 +291,7 @@ if menu == "Cross Check Data":
                 nama_f4 = f"Laporan_Investigasi_Anomali_PG_{tgl_str}.xlsx"
 
                 bytes_all = buat_excel_hasil_keseluruhan(df_hasil, df_pibc_bersih, df_pg_bersih)
-                bytes_audit = buat_excel_rekap_audit(df_hasil, df_pibc_bersih, df_pg_bersih)
+                bytes_audit = buat_excel_rekap_audit(df_hasil, df_pibc_bersih, df_pg_bersih, df_log_duplikat)
                 bytes_pibc = buat_excel_investigasi_pibc(df_hasil, df_pibc_bersih, df_pg_bersih)
                 bytes_pg = buat_excel_investigasi_pg(df_hasil, df_pg_bersih)
                 bytes_zip = buat_zip_semua_laporan({
@@ -284,6 +306,7 @@ if menu == "Cross Check Data":
                 st.session_state['df_pibc_bersih'] = df_pibc_bersih
                 st.session_state['df_pg_bersih'] = df_pg_bersih
                 st.session_state['df_mesin_bersih'] = df_mesin_bersih
+                st.session_state['df_log_duplikat'] = df_log_duplikat
                 st.session_state['peringatan_duplikasi'] = peringatan_list
                 st.session_state['stempel_tanggal'] = tgl_str
                 st.session_state['paket_unduhan'] = {
@@ -301,11 +324,16 @@ if menu == "Cross Check Data":
     # 2. TAMPILAN STAY: Mengambil data dari Session State
     if st.session_state['df_hasil_crosscheck'] is not None:
         df_hasil = st.session_state['df_hasil_crosscheck']
+        df_log_dup = st.session_state.get('df_log_duplikat')
         paket = st.session_state['paket_unduhan']
         peringatan = st.session_state.get('peringatan_duplikasi') or []
 
         for msg in peringatan:
             st.warning(msg)
+
+        if df_log_dup is not None and not df_log_dup.empty:
+            with st.expander(f"🔍 Lihat Rincian Log Duplikat ({len(df_log_dup)} baris terdeteksi)"):
+                st.dataframe(df_log_dup, use_container_width=True)
 
         st.markdown("---")
         st.subheader("Tabel Hasil Cross Check Data")
