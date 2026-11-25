@@ -194,6 +194,47 @@ def cek_kombinasi_variant(ki_full, kb_full, is_to, teks_gab, gudang_norm):
             
     return 'CLEAN'
 
+def _gabung_info_indikasi(list_pesan):
+    bersih = [str(p).strip() for p in list_pesan if p and str(p).strip()]
+    return " | ".join(dict.fromkeys(bersih))
+
+def cek_indikasi_double_input_pg(qty_pg, qty_mb, qty_memphis, pg_trans_gabung):
+    """
+    Mendeteksi indikasi double input PG jika Qty PG merupakan kelipatan bulat N >= 2
+    dari Qty MB (atau Qty Memphis) dengan toleransi pembulatan <= 0.01 * N GR.
+    """
+    if qty_pg is None or qty_pg <= 0:
+        return ""
+
+    def _cek_kelipatan(q_pg, q_patokan):
+        if q_patokan is None or q_patokan <= 0 or q_pg <= q_patokan:
+            return None
+        n = int(round(q_pg / q_patokan))
+        if n < 2:
+            return None
+        if abs(q_pg - (n * q_patokan)) <= (0.01 * n + 1e-9):
+            return n
+        return None
+
+    n_mb = _cek_kelipatan(qty_pg, qty_mb)
+    n_mem = _cek_kelipatan(qty_pg, qty_memphis) if n_mb is None else None
+
+    n_match = n_mb if n_mb is not None else n_mem
+    if n_match is None:
+        return ""
+
+    jml_dok = len(pg_trans_gabung) if isinstance(pg_trans_gabung, dict) else 0
+    if jml_dok >= 2:
+        info_dok = f" | {jml_dok} No. Transaksi PG"
+    elif jml_dok == 1:
+        info_dok = " | 1 No. Transaksi PG"
+    else:
+        info_dok = ""
+
+    if n_mb is not None:
+        return f"Indikasi Double Input PG ({n_match}x{info_dok})"
+    return f"Indikasi Double Input PG vs Memphis ({n_match}x{info_dok})"
+
 def _buat_label_item(kode_raw, nama_raw):
     k = str(kode_raw).strip() if pd.notna(kode_raw) else ""
     n = str(nama_raw).strip() if pd.notna(nama_raw) else ""
@@ -393,7 +434,7 @@ def siapkan_kolom_standar(df_mb):
         df_mb[col_baru] = df_mb[col_baru].astype(object)
         
     for col_baru in [
-        'Crosscheck Qty', 'Info Mesin', 'Info Celup Gabung',
+        'Crosscheck Qty', 'Info Mesin', 'Info dan Indikasi',
         'Cek Item (MB vs Memphis)', 'Cek Item (MB vs PG)', 'Cek Item (PG vs Memphis)',
         'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC'
     ]:
@@ -405,8 +446,9 @@ def siapkan_kolom_standar(df_mb):
 
     return df_mb
 
-def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
+def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None, duplikat_mb_map=None):
     keyword_selisih = ['AVALAN', 'CROCHET', 'KOR', 'KOR ROMBE', 'KOLONG', 'REEBOK', 'ROLL', 'TALI', 'KUR', 'AVL', 'CONS', 'CONE', 'CONES', 'HTC']
+    duplikat_mb_map = duplikat_mb_map or {}
 
     # 1. Lookup Master Data Mesin
     mesin_lookup = {}
@@ -554,7 +596,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
             df_mb.at[idx, 'Ext_PIBC'] = ", ".join(pibc_list).upper()
             df_mb.at[idx, 'Ext_PIBC_List'] = pibc_list
 
-    grup_kode = df_mb.groupby('Kode', sort=False) if 'Kode' in df_mb.columns else [(None, df_mb)]
+    # Grouping per (Gudang_Norm, Kode) agar kode sama lintas gudang tidak bercampur
+    if 'Kode' in df_mb.columns:
+        df_mb['_g_norm_grp'] = df_mb['Gudang'].fillna('').astype(str).apply(normalisasi_gudang)
+        grup_kode = df_mb.groupby(['_g_norm_grp', 'Kode'], sort=False)
+    else:
+        grup_kode = [(('', None), df_mb)]
 
     # 5. Pre-Scan Celup Gabung & PIBC Ganda Tanpa Keyword Gabung
     pibc_to_mb = {}
@@ -603,7 +650,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
     pibc_celup_gabung = {pibc for pibc, mbs in pibc_to_mb.items() if len(set(mbs)) > 1}
 
     # 6. Loop Utama per Transaksi MB
-    for k_val, df_sub in grup_kode:
+    for (_, k_val), df_sub in grup_kode:
         grup_punya_pibc = False
         pibc_list_grup = []
         target_gr_utama_grup = 0.0
@@ -668,6 +715,11 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
             is_celup_gabung = True
             semua_mb_terkait = pibc_to_mb.get(kp_grup_utama, [])
             pasangan_str = ", ".join([str(m) for m in set(semua_mb_terkait) if m != k_val])
+
+        # Skenario A: Indikasi Duplikat MB Identik (Beda Kode)
+        k_val_str = str(k_val).strip() if k_val is not None else ""
+        pasangan_dup_mb = duplikat_mb_map.get((gudang_group_norm, k_val_str), "")
+        indikasi_dup_mb = f"Indikasi Duplikat MB Identik dgn: {pasangan_dup_mb}" if pasangan_dup_mb else ""
 
         peringatan_ganda = ""
         if not is_celup_gabung and kp_grup_utama and is_gudang_audit:
@@ -754,7 +806,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                 df_mb.loc[idx, 'Selisih PG (GR)'] = None
                 df_mb.loc[idx, 'Selisih PG vs Memphis (GR)'] = None
                 df_mb.loc[idx, 'Info Mesin'] = ''
-                df_mb.loc[idx, 'Info Celup Gabung'] = ''
+                df_mb.loc[idx, 'Info dan Indikasi'] = indikasi_dup_mb if is_first_row else ''
                 df_mb.loc[idx, 'Cek Item (MB vs Memphis)'] = ''
                 df_mb.loc[idx, 'Cek Item (MB vs PG)'] = ''
                 df_mb.loc[idx, 'Cek Item (PG vs Memphis)'] = ''
@@ -823,8 +875,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                     else: 
                         df_mb.loc[idx, 'Crosscheck Qty'] = 'INCORRECT' if ('Lab & RnD' in g_norm) else ('MEMANG SELISIH' if ada_keyword_selisih else 'INCORRECT')
                     
-                    if peringatan_ganda:
-                        df_mb.loc[idx, 'Info Celup Gabung'] = peringatan_ganda
+                    pesan_benang = _gabung_info_indikasi([indikasi_dup_mb, peringatan_ganda])
+                    if pesan_benang:
+                        df_mb.loc[idx, 'Info dan Indikasi'] = pesan_benang
                     
                     benang_status_rendered = True
             else:
@@ -833,18 +886,21 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                     qty_bb_baris = bersihkan_angka_indo(row.get('Qty BB Standar (GR)'))
                     qty_bb_mb_sendiri = round(item_qty_dalam_transaksi.get(k_item_upper, qty_bb_baris), 3)
                     
+                    list_info_baris = []
+                    if is_first_row and indikasi_dup_mb:
+                        list_info_baris.append(indikasi_dup_mb)
+
                     if kp_grup_utama in pibc_celup_gabung:
                         qty_bb_cek = round(gabungan_qty_item.get((kp_grup_utama, k_item_upper), qty_bb_mb_sendiri), 3)
-                        info_cg = f"{info_cg_base} (Total: {qty_bb_cek} GR)"
+                        list_info_baris.append(f"{info_cg_base} (Total: {qty_bb_cek} GR)")
                         if qty_bb_mb_sendiri != qty_bb_baris:
-                            info_cg += " | Akumulasi Multi-Baris"
-                        df_mb.loc[idx, 'Info Celup Gabung'] = info_cg
+                            list_info_baris.append("Akumulasi Multi-Baris")
                     else:
                         qty_bb_cek = qty_bb_mb_sendiri
+                        if peringatan_ganda:
+                            list_info_baris.append(peringatan_ganda)
                         if qty_bb_mb_sendiri != qty_bb_baris:
-                            df_mb.loc[idx, 'Info Celup Gabung'] = f"{peringatan_ganda} | Akumulasi Multi-Baris" if peringatan_ganda else "Akumulasi Multi-Baris"
-                        elif peringatan_ganda:
-                            df_mb.loc[idx, 'Info Celup Gabung'] = peringatan_ganda
+                            list_info_baris.append("Akumulasi Multi-Baris")
 
                     df_mb.loc[idx, 'Qty BB Standar (GR)'] = float(qty_bb_mb_sendiri)
 
@@ -858,6 +914,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         k_kode = sanitize_key(kode_item)
                         k_nama = sanitize_key(nama_item)
                         
+                        # Aturan BIOWHITE / SYNERWHITE: pakai Target jika Qty BB Standar < 100 GR, selain itu tetap Actual
                         use_target_memphis = is_target_keyword(nama_item) and (qty_bb_cek < 100.0)
                         lookup_memphis = pibc_lookup_tgt if use_target_memphis else pibc_lookup_act
                         
@@ -905,6 +962,16 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                                 trans_str_list = [f"{nt} ({q_nt:,.2f} GR)" for nt, q_nt in pg_trans_gabung.items()]
                                 df_mb.loc[idx, 'Kode Transaksi PG'] = ", ".join(trans_str_list)
 
+                            if sel_pg > 0:
+                                label_dbl_pg = cek_indikasi_double_input_pg(
+                                    qty_pg_total,
+                                    qty_bb_cek,
+                                    qty_pibc_total if found_in_pibc else None,
+                                    pg_trans_gabung
+                                )
+                                if label_dbl_pg:
+                                    list_info_baris.append(label_dbl_pg)
+
                         if found_in_pg and found_in_pibc:
                             sel_pg_memphis = round(qty_pg_total - qty_pibc_total, 3)
                             if abs(sel_pg_memphis) <= 0.009: sel_pg_memphis = 0.0
@@ -935,6 +1002,10 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
                         elif status_pg == "SELISIH" and status_memphis == "TIDAK ADA":
                             df_mb.loc[idx, 'Crosscheck Qty'] = 'PG SELISIH (MESIN KECIL)' if is_mesin_kecil else 'PG SELISIH (TIDAK ADA DI MEMPHIS)'
                     
+                    pesan_obat = _gabung_info_indikasi(list_info_baris)
+                    if pesan_obat:
+                        df_mb.loc[idx, 'Info dan Indikasi'] = pesan_obat
+
                     obat_rendered_set.add(k_item_upper)
                 else:
                     df_mb.loc[idx, 'Qty BB Standar (GR)'] = None
@@ -947,8 +1018,12 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
 
             is_first_row = False
 
-        # 7. Finalisasi Baris Pertama Grup (3 Kolom Cek Item & Cek Variant)
+        # 7. Finalisasi Baris Pertama Grup
         idx_first = df_sub.index[0]
+        if indikasi_dup_mb:
+            existing_info = str(df_mb.loc[idx_first, 'Info dan Indikasi']).strip()
+            df_mb.loc[idx_first, 'Info dan Indikasi'] = _gabung_info_indikasi([indikasi_dup_mb, existing_info])
+
         if is_gudang_audit:
             df_mb.loc[idx_first, 'Cek Variant'] = ", ".join(error_variants) if error_variants else 'CLEAN'
             
@@ -1003,8 +1078,9 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
             df_mb.loc[idx_first, 'Cek Item (MB vs PG)'] = ''
             df_mb.loc[idx_first, 'Cek Item (PG vs Memphis)'] = ''
             
-    if 'Ext_PIBC_List' in df_mb.columns:
-        df_mb = df_mb.drop(columns=['Ext_PIBC_List'])
+    for col_temp in ['Ext_PIBC_List', '_g_norm_grp']:
+        if col_temp in df_mb.columns:
+            df_mb = df_mb.drop(columns=[col_temp])
 
     cols = list(df_mb.columns)
     group_cols = [
@@ -1024,7 +1100,7 @@ def jalankan_proses_crosscheck(df_mb, df_pibc, df_pg, df_mesin=None):
         cols.insert(idx_insert, c)
 
     tail_order = [
-        'Info Mesin', 'Info Celup Gabung',
+        'Info Mesin', 'Info dan Indikasi',
         'Cek Item (MB vs Memphis)', 'Cek Item (MB vs PG)', 'Cek Item (PG vs Memphis)',
         'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC'
     ]
@@ -1047,12 +1123,12 @@ def format_excel_sheet(ws, df, nama_kolom_kode='Kode', filter_end_row=None):
     
     wrap_cols = [
         'Keterangan', 'Keterangan Lain', 'Keterangan_PG', 'PIBC_PG',
-        'Info Celup Gabung', 'Info Mesin',
+        'Info dan Indikasi', 'Info Mesin',
         'Cek Item (MB vs Memphis)', 'Cek Item (MB vs PG)', 'Cek Item (PG vs Memphis)',
         'Status PIBC', 'Kode Transaksi PG', 'Rincian Benang', 'Cek Variant', 'Ext_PIBC',
         'Kode PIBC Terdeteksi', 'Catatan Auditor', 'Detail Kesalahan & Seharusnya',
         'Item Bermasalah', 'Keterangan Asli', 'Status di PG', 'Status Temuan PG',
-        'Jenis Duplikat', 'Tindakan Sistem', 'Nama File Asal', 'PIBC / Keterangan'
+        'Jenis Duplikat', 'Tindakan Sistem', 'File Dihapus', 'File Dipakai'
     ]
     
     def is_int_col(c_name):
@@ -1292,16 +1368,22 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
         kode_var_err = set()
         kode_ms_set = set()
 
-        grup_hasil = df_hasil.groupby('Kode', sort=False) if 'Kode' in df_hasil.columns else [(None, df_hasil)]
+        if 'Kode' in df_hasil.columns:
+            df_h_grp = df_hasil.copy()
+            df_h_grp['_g_norm_kpi'] = df_h_grp['Gudang'].fillna('').astype(str).apply(normalisasi_gudang)
+            grup_hasil = df_h_grp.groupby(['_g_norm_kpi', 'Kode'], sort=False)
+        else:
+            grup_hasil = [(('', None), df_hasil)]
 
-        for k_val, df_sub in grup_hasil:
+        for (_, k_val), df_sub in grup_hasil:
             first_row = df_sub.iloc[0]
             gudang_norm = normalisasi_gudang(first_row.get('Gudang', ''))
             if gudang_norm not in kpi_stats:
                 kpi_stats[gudang_norm] = {
                     'total': 0, 'clean': 0, 'bermasalah': 0,
                     'err_qty': 0, 'err_var': 0, 'err_kelengkapan': 0,
-                    'pibc_kosong': 0, 'pibc_miss_pg': 0, 'mesin_tdk_terdaftar': 0
+                    'pibc_kosong': 0, 'pibc_miss_pg': 0, 'mesin_tdk_terdaftar': 0,
+                    'indikasi_dup_mb': 0
                 }
             kpi_stats[gudang_norm]['total'] += 1
 
@@ -1309,7 +1391,9 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
             c_mp = str(first_row.get('Cek Item (MB vs PG)', '')).strip()
             c_pm = str(first_row.get('Cek Item (PG vs Memphis)', '')).strip()
             info_m = str(first_row.get('Info Mesin', '')).strip()
+            info_first = str(first_row.get('Info dan Indikasi', '')).strip()
 
+            ada_indikasi_dup_mb = 'INDIKASI DUPLIKAT MB IDENTIK' in info_first.upper()
             pibc_kosong_di_mb = (c_mm == 'KODE PIBC TIDAK ADA')
             pibc_miss_memphis = (c_mm == 'KODE PIBC TIDAK ADA DI MEMPHIS')
             pibc_miss_pg = (c_mp == 'KODE PIBC TIDAK ADA DI PG')
@@ -1323,6 +1407,8 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                 kpi_stats[gudang_norm]['pibc_miss_pg'] += 1
             if 'TIDAK TERDAFTAR' in info_m.upper():
                 kpi_stats[gudang_norm]['mesin_tdk_terdaftar'] += 1
+            if ada_indikasi_dup_mb:
+                kpi_stats[gudang_norm]['indikasi_dup_mb'] += 1
 
             ada_err_qty_grup = False
             ada_err_var_grup = False
@@ -1362,9 +1448,9 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                         jenis = "Pelanggaran SOP Varian"
                         detail = cv
                     
-                    info_cg = str(row.get('Info Celup Gabung', '')).strip()
-                    if info_cg:
-                        detail = f"{detail} | [INFO: {info_cg}]" if detail else f"[INFO: {info_cg}]"
+                    info_ind = str(row.get('Info dan Indikasi', '')).strip()
+                    if info_ind:
+                        detail = f"{detail} | [INFO: {info_ind}]" if detail else f"[INFO: {info_ind}]"
                         
                     baris_ringkas_grup.append({
                         'Gudang': row.get('Gudang', ''),
@@ -1405,7 +1491,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                 kode_var_err.add(k_val)
                 kpi_stats[gudang_norm]['err_var'] += 1
 
-            if ada_err_qty_grup or ada_err_var_grup or ada_err_kelengkapan or pibc_miss_both or pibc_miss_pg:
+            if ada_err_qty_grup or ada_err_var_grup or ada_err_kelengkapan or pibc_miss_both or pibc_miss_pg or ada_indikasi_dup_mb:
                 kpi_stats[gudang_norm]['bermasalah'] += 1
             else:
                 kpi_stats[gudang_norm]['clean'] += 1
@@ -1413,7 +1499,12 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
             if baris_ringkas_grup:
                 data_ringkas.extend(baris_ringkas_grup)
 
+            sudah_masuk_ringkas = bool(baris_ringkas_grup)
+
             if pibc_miss_both:
+                sudah_masuk_ringkas = True
+                det_txt = 'Kode PIBC tidak ditemukan di Master Memphis maupun Master PG'
+                if info_first: det_txt += f" | [INFO: {info_first}]"
                 data_ringkas.append({
                     'Gudang': first_row.get('Gudang', ''),
                     'Kode': first_row.get('Kode', ''),
@@ -1432,7 +1523,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                     'Selisih PG (GR)': None,
                     'Selisih PG vs Memphis (GR)': None,
                     'Jenis Temuan': 'PIBC Tidak Ada di Memphis & PG',
-                    'Detail Kesalahan & Seharusnya': 'Kode PIBC tidak ditemukan di Master Memphis maupun Master PG',
+                    'Detail Kesalahan & Seharusnya': det_txt,
                     'Cek Item (MB vs Memphis)': c_mm,
                     'Cek Item (MB vs PG)': c_mp,
                     'Cek Item (PG vs Memphis)': c_pm,
@@ -1440,6 +1531,9 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                     'Catatan Auditor': ''
                 })
             elif pibc_miss_pg:
+                sudah_masuk_ringkas = True
+                det_txt = 'Kode PIBC tidak ditemukan di Master PG pada gudang terkait'
+                if info_first: det_txt += f" | [INFO: {info_first}]"
                 data_ringkas.append({
                     'Gudang': first_row.get('Gudang', ''),
                     'Kode': first_row.get('Kode', ''),
@@ -1458,18 +1552,21 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                     'Selisih PG (GR)': None,
                     'Selisih PG vs Memphis (GR)': None,
                     'Jenis Temuan': 'PIBC Tidak Ada di PG',
-                    'Detail Kesalahan & Seharusnya': 'Kode PIBC tidak ditemukan di Master PG pada gudang terkait',
+                    'Detail Kesalahan & Seharusnya': det_txt,
                     'Cek Item (MB vs Memphis)': c_mm,
                     'Cek Item (MB vs PG)': c_mp,
                     'Cek Item (PG vs Memphis)': c_pm,
                     'Kode Transaksi PG': '',
                     'Catatan Auditor': ''
                 })
-            elif (not baris_ringkas_grup) and ada_err_kelengkapan:
+            elif (not sudah_masuk_ringkas) and ada_err_kelengkapan:
+                sudah_masuk_ringkas = True
                 sumber_err = []
                 if is_cek_item_bermasalah(c_mm): sumber_err.append("MB vs Memphis")
                 if is_cek_item_bermasalah(c_mp): sumber_err.append("MB vs PG")
                 if is_cek_item_bermasalah(c_pm): sumber_err.append("PG vs Memphis")
+                det_txt = f"Item tidak lengkap/berlebih pada: {', '.join(sumber_err)}"
+                if info_first: det_txt += f" | [INFO: {info_first}]"
                 data_ringkas.append({
                     'Gudang': first_row.get('Gudang', ''),
                     'Kode': first_row.get('Kode', ''),
@@ -1488,7 +1585,33 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                     'Selisih PG (GR)': None,
                     'Selisih PG vs Memphis (GR)': None,
                     'Jenis Temuan': 'Ketidaklengkapan Item',
-                    'Detail Kesalahan & Seharusnya': f"Item tidak lengkap/berlebih pada: {', '.join(sumber_err)}",
+                    'Detail Kesalahan & Seharusnya': det_txt,
+                    'Cek Item (MB vs Memphis)': c_mm,
+                    'Cek Item (MB vs PG)': c_mp,
+                    'Cek Item (PG vs Memphis)': c_pm,
+                    'Kode Transaksi PG': '',
+                    'Catatan Auditor': ''
+                })
+            elif (not sudah_masuk_ringkas) and ada_indikasi_dup_mb:
+                data_ringkas.append({
+                    'Gudang': first_row.get('Gudang', ''),
+                    'Kode': first_row.get('Kode', ''),
+                    'Tanggal': first_row.get('Tanggal', ''),
+                    'Info Mesin': info_m,
+                    'Keterangan': first_row.get('Keterangan', ''),
+                    'Keterangan Lain': first_row.get('Keterangan Lain', ''),
+                    'Kode PIBC Terdeteksi': first_row.get('Ext_PIBC', ''),
+                    'Item Bermasalah': '(Seluruh Kelompok Transaksi MB Identik)',
+                    'Qty Target Standar (GR)': None,
+                    'Qty BB Standar (GR)': None,
+                    'Qty Memphis': None,
+                    'Qty PG': None,
+                    'Selisih Benang (GR)': None,
+                    'Selisih Memphis (GR)': None,
+                    'Selisih PG (GR)': None,
+                    'Selisih PG vs Memphis (GR)': None,
+                    'Jenis Temuan': 'Indikasi Duplikat MB Identik',
+                    'Detail Kesalahan & Seharusnya': info_first,
                     'Cek Item (MB vs Memphis)': c_mm,
                     'Cek Item (MB vs PG)': c_mp,
                     'Cek Item (PG vs Memphis)': c_pm,
@@ -1498,7 +1621,10 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
 
         # --- Sheet 1: Ringkasan KPI ---
         kpi_rows = []
-        tot_all = {k: 0 for k in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar', 'pg_over7']}
+        tot_all = {k: 0 for k in [
+            'total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan',
+            'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar', 'indikasi_dup_mb', 'pg_over7'
+        ]}
         for g_name, st_val in kpi_stats.items():
             pg7 = pg_over7_per_gudang.get(g_name, 0)
             pct = round((st_val['clean'] / st_val['total'] * 100.0), 2) if st_val['total'] > 0 else 0.0
@@ -1513,10 +1639,11 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
                 'Kasus Ketidaklengkapan Item': st_val['err_kelengkapan'],
                 'Kasus PIBC Tidak Ada di PG': st_val['pibc_miss_pg'],
                 'Kasus PIBC Tidak Ada di MB': st_val['pibc_kosong'],
+                'Kasus Indikasi Duplikat MB': st_val['indikasi_dup_mb'],
                 'Kasus Mesin Tidak Terdaftar': st_val['mesin_tdk_terdaftar'],
                 'PG Pending > 7 Hari': pg7
             })
-            for key_t in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar']:
+            for key_t in ['total', 'clean', 'bermasalah', 'err_qty', 'err_var', 'err_kelengkapan', 'pibc_kosong', 'pibc_miss_pg', 'mesin_tdk_terdaftar', 'indikasi_dup_mb']:
                 tot_all[key_t] += st_val[key_t]
             tot_all['pg_over7'] += pg7
 
@@ -1532,6 +1659,7 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
             'Kasus Ketidaklengkapan Item': tot_all['err_kelengkapan'],
             'Kasus PIBC Tidak Ada di PG': tot_all['pibc_miss_pg'],
             'Kasus PIBC Tidak Ada di MB': tot_all['pibc_kosong'],
+            'Kasus Indikasi Duplikat MB': tot_all['indikasi_dup_mb'],
             'Kasus Mesin Tidak Terdaftar': tot_all['mesin_tdk_terdaftar'],
             'PG Pending > 7 Hari': tot_all['pg_over7']
         })
@@ -1631,12 +1759,12 @@ def buat_excel_rekap_audit(df_hasil, df_pibc=None, df_pg=None, df_log_duplikat=N
             df_info.to_excel(writer, index=False, sheet_name='Memang Selisih (Full Grup)')
             format_excel_sheet(writer.sheets['Memang Selisih (Full Grup)'], df_info, None)
 
-        # --- Sheet 7: Log Duplikat (Jejak Audit Data Ganda) ---
+        # --- Sheet 7: Log Duplikat (Ringkas 1 Baris per Dokumen) ---
         if df_log_duplikat is not None and not df_log_duplikat.empty:
             df_log_duplikat.to_excel(writer, index=False, sheet_name='Log Duplikat')
             format_excel_sheet(writer.sheets['Log Duplikat'], df_log_duplikat, 'No. Transaksi / Kode')
         else:
-            df_info = pd.DataFrame({'Info': ['Tidak ditemukan data duplikat (lintas file maupun dalam 1 file)']})
+            df_info = pd.DataFrame({'Info': ['Tidak ditemukan data duplikat']})
             df_info.to_excel(writer, index=False, sheet_name='Log Duplikat')
             format_excel_sheet(writer.sheets['Log Duplikat'], df_info, None)
 
@@ -1668,12 +1796,13 @@ def buat_excel_investigasi_pibc(df_hasil_mb, df_pibc, df_pg=None):
         seen_kode_mb = set()
         for _, row in df_hasil_mb.iterrows():
             kode_mb = str(row.get('Kode', '')).strip()
-            if kode_mb in seen_kode_mb:
+            g_mb = normalisasi_gudang(row.get('Gudang', ''))
+            key_seen = (g_mb, kode_mb)
+            if key_seen in seen_kode_mb:
                 continue
             ext_pibc = str(row.get('Ext_PIBC', '')).strip()
             if ext_pibc:
-                seen_kode_mb.add(kode_mb)
-                g_mb = normalisasi_gudang(row.get('Gudang', ''))
+                seen_kode_mb.add(key_seen)
                 list_pibc = [p.strip() for p in ext_pibc.split(',') if p.strip()]
                 bodong = [p for p in list_pibc if sanitize_key(p) not in pibc_di_master]
                 if bodong:
@@ -1740,12 +1869,13 @@ def buat_excel_investigasi_pg(df_hasil_mb, df_pg):
         seen_kode_mb = set()
         for _, row in df_hasil_mb.iterrows():
             kode_mb = str(row.get('Kode', '')).strip()
-            if kode_mb in seen_kode_mb:
+            g_mb = normalisasi_gudang(row.get('Gudang', ''))
+            key_seen = (g_mb, kode_mb)
+            if key_seen in seen_kode_mb:
                 continue
             ext_pibc = str(row.get('Ext_PIBC', '')).strip()
             if ext_pibc:
-                seen_kode_mb.add(kode_mb)
-                g_mb = normalisasi_gudang(row.get('Gudang', ''))
+                seen_kode_mb.add(key_seen)
                 list_pibc = [p.strip() for p in ext_pibc.split(',') if p.strip()]
                 bodong = [p for p in list_pibc if (g_mb, sanitize_key(p)) not in pg_by_gudang]
                 if bodong:
